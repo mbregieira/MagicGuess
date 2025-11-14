@@ -2,7 +2,7 @@
 
 class MasterGuess:
     def __init__(self, name, birth, relationships=None, children=None, pets=None,
-                 important_dates=None, keywords=None):
+                 important_dates=None, keywords=None, emails=None):
 
         self.name = name
         self.birth = birth
@@ -15,3 +15,5 @@ class MasterGuess:
 
         self.wordlist = []
         self.pinlist = []
+        
+        self.emails = emails or []

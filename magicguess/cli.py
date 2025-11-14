@@ -1,8 +1,7 @@
 from magicguess.core import MasterGuess
-from magicguess.utils import validate_date
-from magicguess.transforms import generate_pinlist_from_word
-from magicguess.combinators import generate_combinations
-from magicguess.io_handlers import save_wordlist
+from magicguess.utils import validate_date, validate_email 
+from magicguess.combinators import generate_wordlist, generate_pinlist, dedupe
+from magicguess.io_handlers import save_wordlist, save_pinlist
 
 def ask_yes_no(prompt):
     answer = input(f"{prompt} (y/yes n/no): ").strip().lower()
@@ -22,19 +21,47 @@ def ask_date(prompt):
 def main_cli():
     mg = create_masterguess()
 
-    # Generate wordlist
-    mg.wordlist = generate_combinations(mg)
-    print(f"[+] Wordlist generated with {len(mg.wordlist)} entries.")
+    # default values in case future features depend on them
+    mg.generate_wordlist = False
+    mg.generate_pinlist = False
 
-    # Generate pinlist
-    mg.pinlist = [generate_pinlist_from_word(w) for w in mg.wordlist]
-    print(f"[+] PIN list generated with {len(mg.pinlist)} entries.")
+    print("Do you want to create a wordlist, a PIN list, or both?")
 
-    # Ask to save
-    save_wordlist(mg)
+    valid_choices = ["wordlist", "pinlist", "both", "exit"]
+    choice = ""
 
-    print("Done.")
-    input("Press Enter to exit...")
+    while choice not in valid_choices:
+        choice = input("Enter 'wordlist', 'pinlist', 'both', or 'exit': ").strip().lower()
+
+    if choice == "exit":
+        print("Exiting MagicGuess.")
+        return
+
+    if choice == "wordlist":
+        mg.generate_wordlist = True
+        mg.generate_pinlist = False
+
+    elif choice == "pinlist":
+        mg.generate_wordlist = False
+        mg.generate_pinlist = True
+
+    elif choice == "both":
+        mg.generate_wordlist = True
+        mg.generate_pinlist = True
+
+    # Now call the processing functions
+    if mg.generate_wordlist:
+        mg.wordlist = generate_wordlist(mg)
+        save_wordlist(mg)
+
+    if mg.generate_pinlist:
+        mg.pinlist = generate_pinlist(mg)
+        save_pinlist(mg)
+
+    # final cleanup: combine and dedupe
+    mg.final_output = dedupe(mg)
+
+    print("\n[+] MagicGuess completed!")
 
 
 def create_masterguess():
@@ -111,6 +138,17 @@ def create_masterguess():
         if raw:
             important_words = [w.strip() for w in raw.split(",")]
 
+    # ---- Emails Known -----
+    emails = []
+    if ask_yes_no("Are there known email addresses for the target?"):
+        raw = input("Enter them comma-separated: ").strip()
+        if raw:
+            for e in [em.strip() for em in raw.split(",")]:
+                if validate_email(e):
+                    emails.append(e)
+                else:
+                    print(f"Warning: {e} ignored (invalid email).")
+
     print("\n[+] Target profile completed!\n")
 
     return MasterGuess(
@@ -120,5 +158,6 @@ def create_masterguess():
         children=children,
         pets=pets,
         important_dates=important_dates,
-        keywords=important_words
+        keywords=important_words,
+        emails=emails
     )
