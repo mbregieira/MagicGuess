@@ -20,11 +20,8 @@ def extract_digits(s: str) -> str:
 # DATE HANDLING
 # ------------------------------
 
+# Convert date object to common password patterns like DDMMYYYY, YYMMDD, etc.
 def date_to_variations(date_obj):
-    """
-    Given a datetime.date object, return common password patterns.
-    Example: 24/12/1993 -> ['24121993', '241293', '1993', '93', '2412']
-    """
     if not date_obj:
         return []
 
@@ -37,26 +34,22 @@ def date_to_variations(date_obj):
         day + month + year[2:],   # 241293
         year,
         year[2:],                 # 93
-        day + month               # 2412
+        day + month,               # 2412
+        month + year,              # 121993
+        month + year[2:],         # 1293
     ]
-
 
 # ------------------------------
 # EMAIL TRANSFORMS
 # ------------------------------
 
+# Get left-side of email
 def extract_email_username(email: str) -> str:
     """Get left-side of email."""
     return email.split("@")[0].lower()
 
-
+# Break email into components like user, digits, alpha parts
 def email_to_components(email: str):
-    """
-    Break email username into:
-    - raw user
-    - digits from user
-    - alphabetic blocks
-    """
     user = extract_email_username(email)
     digits = extract_digits(user)
     alpha = re.sub(r"[^A-Za-z]", "", user)
@@ -98,3 +91,17 @@ def string_to_t9(s: str) -> str:
     """Convert name → old Nokia numeric keypad representation."""
     s = s.lower()
     return "".join(T9_MAP.get(ch, "") for ch in s if ch.isalpha())
+
+# e.g. c -> 2 not 222 
+def string_to_t9_short(s: str) -> str:
+    """Convert name → old Nokia numeric keypad representation (short)."""
+    s = s.lower()
+    t9_short = ""
+    added_digits = set()
+    for ch in s:
+        if ch.isalpha():
+            digit = T9_MAP.get(ch, "")[0]  # Get only the first digit
+            if digit not in added_digits:
+                t9_short += digit
+                added_digits.add(digit)
+    return t9_short

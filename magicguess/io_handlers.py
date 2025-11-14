@@ -8,7 +8,6 @@ def save_wordlist(mg):
             f.write(w + "\n")
 
     print(f"[+] Wordlist save in {filename}")
-    input("Enter to continue...")
 
 def save_pinlist(mg):
     filename = "AwesomePINlist.txt"
@@ -18,4 +17,3 @@ def save_pinlist(mg):
             f.write(p + "\n")
 
     print(f"[+] PIN list saved in {filename}")
-    input("Enter to continue...")
