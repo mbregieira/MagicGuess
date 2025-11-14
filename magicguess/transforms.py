@@ -1,27 +1,32 @@
-# transformações (nome -> pin, leet, phone keypad, etc.)
-
+# transforms.py
 import re
 
 # ------------------------------
 # BASIC NORMALIZERS
 # ------------------------------
-
 def normalize_string(s: str) -> str:
     """Lowercase, remove spaces and special chars except digits."""
     return re.sub(r"[^A-Za-z0-9]", "", s.lower())
-
 
 def extract_digits(s: str) -> str:
     """Return only digits from a string."""
     return "".join(re.findall(r"\d", s))
 
+def split_alphanumeric(s: str):
+    """
+    Split a string like 'joaodascouves456123' into:
+    - ['joaodascouves', '456123']
+    """
+    return re.findall(r"[A-Za-z]+|\d+", s.lower())
 
 # ------------------------------
 # DATE HANDLING
 # ------------------------------
-
-# Convert date object to common password patterns like DDMMYYYY, YYMMDD, etc.
 def date_to_variations(date_obj):
+    """
+    Given a datetime.date object, return common password patterns.
+    Example: 24/12/1993 -> ['24121993', '241293', '1993', '93', '2412']
+    """
     if not date_obj:
         return []
 
@@ -34,47 +39,32 @@ def date_to_variations(date_obj):
         day + month + year[2:],   # 241293
         year,
         year[2:],                 # 93
-        day + month,               # 2412
-        month + year,              # 121993
-        month + year[2:],         # 1293
+        day + month               # 2412
     ]
 
 # ------------------------------
 # EMAIL TRANSFORMS
 # ------------------------------
-
-# Get left-side of email
 def extract_email_username(email: str) -> str:
     """Get left-side of email."""
     return email.split("@")[0].lower()
 
-# Break email into components like user, digits, alpha parts
 def email_to_components(email: str):
+    """
+    Break email username into:
+    - raw user
+    - digits from user
+    - alphabetic blocks
+    """
     user = extract_email_username(email)
     digits = extract_digits(user)
     alpha = re.sub(r"[^A-Za-z]", "", user)
 
     return [user, digits, alpha]
 
-
-# ------------------------------
-# NAME / NICKNAME / WORD TRANSFORMS
-# ------------------------------
-
-def split_alphanumeric(s: str):
-    """
-    Split a string like 'joaodascouves456123' into:
-    - joaodascouves
-    - 456123
-    """
-    parts = re.findall(r"[A-Za-z]+|\d+", s.lower())
-    return parts
-
-
 # ------------------------------
 # T9 (OLD PHONE KEYPAD)
 # ------------------------------
-
 T9_MAP = {
     "a": "2", "b": "22", "c": "222",
     "d": "3", "e": "33", "f": "333",
@@ -86,22 +76,46 @@ T9_MAP = {
     "w": "9", "x": "99", "y": "999", "z": "9999",
 }
 
-
 def string_to_t9(s: str) -> str:
     """Convert name → old Nokia numeric keypad representation."""
     s = s.lower()
     return "".join(T9_MAP.get(ch, "") for ch in s if ch.isalpha())
 
-# e.g. c -> 2 not 222 
-def string_to_t9_short(s: str) -> str:
-    """Convert name → old Nokia numeric keypad representation (short)."""
-    s = s.lower()
-    t9_short = ""
-    added_digits = set()
-    for ch in s:
-        if ch.isalpha():
-            digit = T9_MAP.get(ch, "")[0]  # Get only the first digit
-            if digit not in added_digits:
-                t9_short += digit
-                added_digits.add(digit)
-    return t9_short
+# ------------------------------
+# LEET TRANSFORMATIONS
+# ------------------------------
+_LEET_MAP = {
+    "a": ["4", "@"],
+    "e": ["3"],
+    "i": ["1", "!"],
+    "o": ["0"],
+    "s": ["5", "$"],
+    "t": ["7"],
+}
+
+def leet_transform(word: str, max_substitutions=2):
+    """
+    Generate leet variations of a word.
+    Limits: max_substitutions per word (to avoid explosion).
+    """
+    word = word.lower()
+    results = {word}  # always include original
+
+    # positions with possible substitutions
+    positions = [i for i, ch in enumerate(word) if ch in _LEET_MAP]
+
+    if not positions:
+        return results
+
+    from itertools import combinations, product
+    max_subs = min(max_substitutions, len(positions))
+    for n in range(1, max_subs + 1):
+        for pos_combo in combinations(positions, n):
+            replacement_groups = [_LEET_MAP[word[i]] for i in pos_combo]
+            for replacements in product(*replacement_groups):
+                new_word = list(word)
+                for idx, rep in zip(pos_combo, replacements):
+                    new_word[idx] = rep
+                results.add("".join(new_word))
+
+    return results

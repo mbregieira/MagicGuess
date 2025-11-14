@@ -1,135 +1,87 @@
-# combinações e cross-product das palavras/patterns
+# combinators.py
 
-from .transforms import (
-    normalize_string, extract_digits, date_to_variations,
-    email_to_components, split_alphanumeric, string_to_t9
+from .utils import validate_email
+from .generators import (
+    generate_from_name, generate_from_email, generate_from_person,
+    generate_from_word, expand_leet, generate_pins_from_text
 )
+from .transforms import date_to_variations
+
+
+# -------------------------------------
+# WORDLIST GENERATOR (MAIN)
+# -------------------------------------
 
 def generate_wordlist(mg):
 
     words = []
 
-    # ------------------------------
-    # Target name + components
-    # ------------------------------
-    name = normalize_string(mg.name)
-    if name:
-        words.append(name)
-        words.extend(split_alphanumeric(name))
+    # Name
+    words.extend(generate_from_name(mg.name))
 
-    # ------------------------------
-    # Email-derived words
-    # ------------------------------
+    # Emails
     for email in mg.emails:
-        parts = email_to_components(email)
-        words.extend(parts)
-        for p in parts:
-            words.extend(split_alphanumeric(p))
+        if validate_email(email):
+            words.extend(generate_from_email(email))
 
-    # ------------------------------
     # Relationships / children / pets
-    # ------------------------------
-    def add_person_entries(person):
-        name = normalize_string(person["name"])
-        if name:
-            words.append(name)
-            words.extend(split_alphanumeric(name))
-
-        if person.get("nickname"):
-            nick = normalize_string(person["nickname"])
-            words.append(nick)
-
-        if person.get("birth"):
-            words.extend(date_to_variations(person["birth"]))
-
     for rel in mg.relationships:
-        add_person_entries(rel)
+        words.extend(generate_from_person(rel))
 
     for child in mg.children:
-        add_person_entries(child)
+        words.extend(generate_from_person(child))
 
     for pet in mg.pets:
-        add_person_entries(pet)
+        words.extend(generate_from_person(pet))
 
-    # ------------------------------
     # Important dates
-    # ------------------------------
     for d in mg.important_dates:
         words.extend(date_to_variations(d))
 
-    # ------------------------------
     # Important words
-    # ------------------------------
     for w in mg.keywords:
-        w = normalize_string(w)
-        words.append(w)
-        words.extend(split_alphanumeric(w))
+        words.extend(generate_from_word(w))
 
-    return list(set(words))  # unique
+    # Expand with leet
+    expanded = expand_leet(words, max_subs=2)
 
+    return sorted(set(expanded))
+
+
+# -------------------------------------
+# PINLIST GENERATOR (MAIN)
+# -------------------------------------
 
 def generate_pinlist(mg):
 
     pins = set()
 
-    # Base names T9
-    def add_t9_from_name(s: str):
-        s = normalize_string(s)
-        if s:
-            t9 = string_to_t9(s)
-            if t9:
-                pins.add(t9)
+    all_textual_words = []
 
-    # Target name
-    add_t9_from_name(mg.name)
+    # Collect everything that is text-based
+    all_textual_words.extend(generate_from_name(mg.name))
 
-    # Emails
     for email in mg.emails:
-        components = email_to_components(email)
-        for c in components:
-            add_t9_from_name(c)
-            digits = extract_digits(c)
-            if digits:
-                pins.add(digits)
-
-    # Relationships / children / pets
-    def add_person(person):
-        add_t9_from_name(person["name"])
-        if person.get("nickname"):
-            add_t9_from_name(person["nickname"])
-
-        if person.get("birth"):
-            for combo in date_to_variations(person["birth"]):
-                pins.add(combo)
+        if validate_email(email):
+            all_textual_words.extend(generate_from_email(email))
 
     for rel in mg.relationships:
-        add_person(rel)
+        all_textual_words.extend(generate_from_person(rel))
 
     for child in mg.children:
-        add_person(child)
+        all_textual_words.extend(generate_from_person(child))
 
     for pet in mg.pets:
-        add_person(pet)
+        all_textual_words.extend(generate_from_person(pet))
 
-    # Important dates
-    for d in mg.important_dates:
-        for combo in date_to_variations(d):
-            pins.add(combo)
-
-    # Important words
     for w in mg.keywords:
-        add_t9_from_name(w)
+        all_textual_words.extend(generate_from_word(w))
 
-    # Remove duplicates
+    # Generate PINs from text (T9, digits)
+    pins.update(generate_pins_from_text(all_textual_words))
+
+    # Add date-only combos
+    for d in mg.important_dates:
+        pins.update(date_to_variations(d))
+
     return sorted(pins)
-
-def dedupe(mg):
-    combined = set()
-
-    for w in mg.wordlist:
-        combined.add(w)
-
-    for p in mg.pinlist:
-        combined.add(p)
-
-    return sorted(combined)
