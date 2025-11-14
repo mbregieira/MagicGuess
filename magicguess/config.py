@@ -1,0 +1,1 @@
+# defaults (tamanho pins, mapping)
