@@ -1,19 +1,19 @@
-# escrever ficheiro, formatos (txt, csv)
+# io_handlers.py
+# Funções de load/save para wordlist e pinlist
 
-def save_wordlist(mg):
-    filename = "AwesomeWordlist.txt"
-
+def save_wordlist(wordlist, filename="AwesomeWordlist.txt"):
+    """Grava a wordlist num ficheiro."""
     with open(filename, "w", encoding="utf-8") as f:
-        for w in mg.wordlist:
+        for w in wordlist:
             f.write(w + "\n")
 
-    print(f"[+] Wordlist save in {filename}")
+    print(f"[+] Wordlist saved to {filename}")
 
-def save_pinlist(mg):
-    filename = "AwesomePINlist.txt"
 
+def save_pinlist(pinlist, filename="AwesomePINlist.txt"):
+    """Grava a PIN list num ficheiro."""
     with open(filename, "w", encoding="utf-8") as f:
-        for p in mg.pinlist:
+        for p in pinlist:
             f.write(p + "\n")
 
-    print(f"[+] PIN list saved in {filename}")
+    print(f"[+] PIN list saved to {filename}")

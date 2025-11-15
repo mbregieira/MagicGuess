@@ -1,141 +1,147 @@
 # generators.py
 
 # generators.py
-import re
-from datetime import date
-from .transforms import clean, normalize_string, split_email_parts
 
-# Helpers for birth/date variants (keep compact)
-def birthdate_variants(birthdate: date):
-    if not isinstance(birthdate, date):
+from magicguess.utils import sanitize_word, dedupe, normalize_string
+from datetime import datetime
+import itertools
+
+SPECIAL_CHARS = ['!', '@', '#', '$', '%', '&', '*']
+COMMON_NUMBERS = ["1", "12", "123", "1234", "69", "7", "17", "123456"]
+MIN_LENGTH = 6
+
+# -------------------------
+# Toggle case das palavras individuais
+# -------------------------
+def toggle_case(word):
+    return list(dedupe([
+        word.lower(),
+        word.capitalize(),
+        word.upper() if len(word) > 1 else word.upper()
+    ]))
+
+# -------------------------
+# Nome variantes
+# -------------------------
+def name_variants(full_name: str):
+    """Gera variações de nomes individuais e compostos corretos."""
+    parts = [sanitize_word(p) for p in full_name.strip().split() if p]
+    individual_variants = [toggle_case(p) for p in parts]
+
+    # Flatten para nomes simples
+    simple_names = list(itertools.chain.from_iterable(individual_variants))
+
+    # Combinar palavras individuais em nomes compostos
+    combined_variants = []
+    for combo in itertools.product(*individual_variants):
+        combined_variants.append(''.join(combo))
+
+    return dedupe(simple_names + combined_variants)
+
+# -------------------------
+# Datas variantes
+# -------------------------
+def date_variants(d):
+    if not d:
         return []
-    y = str(birthdate.year)
-    yy = y[-2:]
-    dd = f"{birthdate.day:02d}"
-    mm = f"{birthdate.month:02d}"
-    return [dd+mm+y, dd+mm+yy, y, yy, dd+mm]
 
-# Extract name variants with priority: first, last, fullname (no spaces)
-def name_variants(name: str):
-    if not name:
-        return []
-    s = normalize_string(name)
-    parts = s.split()
-    out = []
-    if len(parts) == 1:
-        out.append(parts[0])
-    else:
-        out.append(parts[0])                 # first
-        out.append(parts[-1])                # last
-        out.append("".join(parts))           # full concat
-    # initials (low priority)
-    if len(parts) >= 2:
-        out.append("".join([p[0] for p in parts]))
-    return list(dict.fromkeys([clean(x) for x in out if x]))
+    days = [str(d.day), f"{d.day:02d}"]
+    months = [str(d.month), f"{d.month:02d}"]
+    year_full = str(d.year)
+    year_short = year_full[-2:]
 
-# Email local splitting (kept simple)
-def email_local_chunks(email_local: str):
-    # split alpha/digits runs
-    if not email_local:
-        return []
-    chunks = re.findall(r"[A-Za-z]+|\d+", email_local)
-    return [clean(c) for c in chunks if c]
+    variants = set()
+    for day in days:
+        for month in months:
+            for year in [year_full, year_short]:
+                variants.add(f"{day}{month}{year}")
+                variants.add(f"{month}{day}{year}")  # invertido
 
-# MAIN extraction: returns dict with 'high','medium','low' lists
-def extract_profile_variables(profile):
-    HIGH = []
-    MEDIUM = []
-    LOW = []
+    variants.add(year_full)
+    variants.add(year_short)
 
-    # Name (target)
+    return list(dedupe(variants))
+
+# -------------------------
+# Caracteres especiais
+# -------------------------
+def special_chars_variants(word):
+    variants = [word]
+    for c in SPECIAL_CHARS:
+        variants.append(c + word)
+        variants.append(word + c)
+        variants.append(c + word + c)
+    return variants
+
+# -------------------------
+# Números comuns
+# -------------------------
+def append_common_numbers(word):
+    return [word + n for n in COMMON_NUMBERS]
+
+# -------------------------
+# Geração da wordlist
+# -------------------------
+def generate_wordlist(profile):
+    words = []
+
+    # 1) Nomes
     if profile.name:
-        nv = name_variants(profile.name)
-        # prefer first and last; ensure ordering: first, last, full
-        if nv:
-            # nv already in that order
-            HIGH.extend(nv[:3])
+        words += name_variants(profile.name)
 
-    # Target birth
+    # 2) Palavras importantes
+    for kw in profile.keywords:
+        if kw:
+            words += toggle_case(sanitize_word(normalize_string(kw)))
+
+    words = dedupe(words)
+
+    # 3) Datas importantes
+    date_list = []
     if profile.birth:
-        HIGH.extend(birthdate_variants(profile.birth))
-
-    # Relationships (partner/confidant)
-    for r in profile.relationships:
-        if getattr(r, "first_name", None):
-            HIGH.append(r.first_name)
-        if getattr(r, "last_name", None):
-            MEDIUM.append(r.last_name)
-        if getattr(r, "nickname", None):
-            MEDIUM.append(r.nickname)
-        if getattr(r, "birthdate", None):
-            MEDIUM.extend(birthdate_variants(r.birthdate))
-
-    # Children (high for child names, child dates high)
-    for c in profile.children:
-        if getattr(c, "first_name", None):
-            HIGH.append(c.first_name)
-        if getattr(c, "nickname", None):
-            MEDIUM.append(c.nickname)
-        if getattr(c, "birthdate", None):
-            HIGH.extend(birthdate_variants(c.birthdate))
-
-    # Pets (names high)
-    for p in profile.pets:
-        if getattr(p, "name", None):
-            HIGH.append(p.name)
-        if getattr(p, "birthdate", None):
-            MEDIUM.extend(birthdate_variants(p.birthdate))
-
-    # Important dates (medium)
+        date_list += date_variants(profile.birth)
     for d in profile.important_dates:
-        MEDIUM.extend(birthdate_variants(d))
+        date_list += date_variants(d)
+    date_list = dedupe(date_list)
 
-    # Keywords (medium)
-    for k in profile.keywords:
-        MEDIUM.append(k)
+    # 4) Combina palavras importantes com datas
+    important_words = words.copy()
+    combined_words = []
+    for w in important_words:
+        for dtv in date_list:
+            combined_words.append(w + dtv)
 
-    # Emails (low priority: local and domain base)
-    for e in profile.emails:
-        if getattr(e, "local", None):
-            LOW.extend(email_local_chunks(e.local))
-            LOW.append(e.local)
-        if getattr(e, "domain", None):
-            parts = e.domain.split(".")
-            if parts:
-                LOW.append(parts[0])  # main domain e.g., hotmail, gmail
+    words += combined_words
+    words += date_list  # manter datas isoladas
 
-    # Clean + dedupe each priority preserving rough order
-    def clean_and_unique(seq):
-        out = []
-        seen = set()
-        for item in seq:
-            item = clean(item)
-            if not item:
-                continue
-            if item not in seen:
-                out.append(item)
-                seen.add(item)
-        return out
+    # 5) Aplicar números comuns apenas às palavras importantes
+    numbered_words = []
+    for w in important_words:
+        numbered_words += append_common_numbers(w)
+    words += numbered_words
 
-    return {
-        "high": clean_and_unique(HIGH),
-        "medium": clean_and_unique(MEDIUM),
-        "low": clean_and_unique(LOW)
-    }
+    # 6) Aplicar caracteres especiais (inicio/fim/inicio+fim)
+    final_words = []
+    for w in words:
+        final_words += special_chars_variants(w)
 
-# Convenience: produce ordered list with priority weighting (high first)
-def generate_base_words(profile, include_low=False):
-    vars = extract_profile_variables(profile)
-    base = []
-    base.extend(vars["high"])
-    base.extend(vars["medium"])
-    if include_low:
-        base.extend(vars["low"])
-    # final dedupe while preserving order
-    out = []
-    s = set()
-    for w in base:
-        if w and w not in s:
-            out.append(w)
-            s.add(w)
-    return out
+    # 7) Dedup e filtrar palavras inválidas
+    final_words = dedupe(final_words)
+    filtered = []
+    for w in final_words:
+        if len(w) < MIN_LENGTH:
+            continue
+        # descartar se só números ou só especiais
+        if w.isdigit():
+            continue
+        if all(c in SPECIAL_CHARS for c in w):
+            continue
+        filtered.append(w)
+
+    return filtered
+
+# -------------------------
+# TODO: PIN list
+# -------------------------
+def generate_pinlist(profile):
+    return []  # placeholder

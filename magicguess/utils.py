@@ -4,6 +4,7 @@ import os
 import platform
 import unicodedata
 from datetime import datetime
+import re
 
 def clear_screen():
     if platform.system().lower() == "windows":
@@ -82,4 +83,12 @@ def validate_email(email):
         return False
 
     # 3. If all simple checks pass, it adheres to the basic structure.
-    return True 
+    return True
+
+# New normalization function to remove spaces and special characters
+def normalize_string(s: str) -> str:
+    """
+    Normalize a string by removing spaces and special characters, keeping only alphanumeric characters.
+    Converts to lowercase.
+    """
+    return re.sub(r"[^A-Za-z0-9]", "", s)
