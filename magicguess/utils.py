@@ -11,6 +11,25 @@ def clear_screen():
     else:
         os.system("clear")
 
+def dedupe(items):
+    """Remove duplicates preserving order."""
+    seen = set()
+    clean = []
+    for i in items:
+        if i not in seen:
+            clean.append(i)
+            seen.add(i)
+    return clean
+
+# Validate if the guess is minimum length, if not, discard
+def validate_min_length(list, min_length):
+    valid = []
+    for word in list:
+        if len(word) >= min_length:
+            valid.append(word)
+
+    return valid
+
 # Validate date in DD/MM/YYYY format
 def validate_date(date_str):
     try:

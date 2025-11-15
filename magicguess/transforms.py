@@ -1,90 +1,32 @@
 # transforms.py
-import re
+import itertools
+import unicodedata
+import datetime
 
-# ------------------------------
-# BASIC NORMALIZERS
-# ------------------------------
+# Basic cleaning & normalization
 def normalize_string(s: str) -> str:
-    """Lowercase, remove spaces and special chars except digits."""
-    return re.sub(r"[^A-Za-z0-9]", "", s.lower())
+    if not s:
+        return ""
+    normalized = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in normalized if not unicodedata.combining(c))
 
-def extract_digits(s: str) -> str:
-    """Return only digits from a string."""
-    return "".join(re.findall(r"\d", s))
+def clean(s: str) -> str:
+    if not s:
+        return ""
+    s = normalize_string(s)
+    s = s.strip()
+    s = s.replace(" ", "")
+    return s
 
-def split_alphanumeric(s: str):
-    """
-    Split a string like 'joaodascouves456123' into:
-    - ['joaodascouves', '456123']
-    """
-    return re.findall(r"[A-Za-z]+|\d+", s.lower())
+# Email helpers (kept minimal here)
+def split_email_parts(email: str):
+    if "@" not in email:
+        return [email, None]
+    user, domain = email.split("@", 1)
+    return [user, domain]
 
-# ------------------------------
-# DATE HANDLING
-# ------------------------------
-def date_to_variations(date_obj):
-    """
-    Given a datetime.date object, return common password patterns.
-    Example: 24/12/1993 -> ['24121993', '241293', '1993', '93', '2412']
-    """
-    if not date_obj:
-        return []
-
-    day = f"{date_obj.day:02d}"
-    month = f"{date_obj.month:02d}"
-    year = str(date_obj.year)
-
-    return [
-        day + month + year,
-        day + month + year[2:],   # 241293
-        year,
-        year[2:],                 # 93
-        day + month               # 2412
-    ]
-
-# ------------------------------
-# EMAIL TRANSFORMS
-# ------------------------------
-def extract_email_username(email: str) -> str:
-    """Get left-side of email."""
-    return email.split("@")[0].lower()
-
-def email_to_components(email: str):
-    """
-    Break email username into:
-    - raw user
-    - digits from user
-    - alphabetic blocks
-    """
-    user = extract_email_username(email)
-    digits = extract_digits(user)
-    alpha = re.sub(r"[^A-Za-z]", "", user)
-
-    return [user, digits, alpha]
-
-# ------------------------------
-# T9 (OLD PHONE KEYPAD)
-# ------------------------------
-T9_MAP = {
-    "a": "2", "b": "22", "c": "222",
-    "d": "3", "e": "33", "f": "333",
-    "g": "4", "h": "44", "i": "444",
-    "j": "5", "k": "55", "l": "555",
-    "m": "6", "n": "66", "o": "666",
-    "p": "7", "q": "77", "r": "777", "s": "7777",
-    "t": "8", "u": "88", "v": "888",
-    "w": "9", "x": "99", "y": "999", "z": "9999",
-}
-
-def string_to_t9(s: str) -> str:
-    """Convert name → old Nokia numeric keypad representation."""
-    s = s.lower()
-    return "".join(T9_MAP.get(ch, "") for ch in s if ch.isalpha())
-
-# ------------------------------
-# LEET TRANSFORMATIONS
-# ------------------------------
-_LEET_MAP = {
+# Leet with strict cap: max 2 subs (total) irrespective of length (configurable)
+LEET_MAP = {
     "a": ["4", "@"],
     "e": ["3"],
     "i": ["1", "!"],
@@ -93,29 +35,123 @@ _LEET_MAP = {
     "t": ["7"],
 }
 
-def leet_transform(word: str, max_substitutions=2):
-    """
-    Generate leet variations of a word.
-    Limits: max_substitutions per word (to avoid explosion).
-    """
-    word = word.lower()
-    results = {word}  # always include original
-
-    # positions with possible substitutions
-    positions = [i for i, ch in enumerate(word) if ch in _LEET_MAP]
-
+def apply_leet_limited(word: str, max_subs=2):
+    # positions where substitution possible
+    positions = [(i, LEET_MAP[c]) for i, c in enumerate(word.lower()) if c in LEET_MAP]
     if not positions:
-        return results
+        yield word
+        return
+    max_subs = min(max_subs, len(positions))
+    # limit r to 1..max_subs (but be conservative)
+    for r in range(1, max_subs+1):
+        for subset in itertools.combinations(positions, r):
+            replacement_options = [pos[1] for pos in subset]
+            # take only the first replacement option per char to limit explosion?
+            # We'll still iterate product but max_subs small keeps result small.
+            for combo in itertools.product(*replacement_options):
+                new = list(word)
+                for (pos, _), rep in zip(subset, combo):
+                    new[pos] = rep
+                yield "".join(new)
+    yield word
 
-    from itertools import combinations, product
-    max_subs = min(max_substitutions, len(positions))
-    for n in range(1, max_subs + 1):
-        for pos_combo in combinations(positions, n):
-            replacement_groups = [_LEET_MAP[word[i]] for i in pos_combo]
-            for replacements in product(*replacement_groups):
-                new_word = list(word)
-                for idx, rep in zip(pos_combo, replacements):
-                    new_word[idx] = rep
-                results.add("".join(new_word))
+# Case variants: original, first-upper, last-upper, first+last upper
+def apply_case_variants(word: str):
+    if not word:
+        return []
+    w = word.lower()
+    out = [w]
+    if len(w) >= 1:
+        out.append(w[0].upper() + w[1:])
+        out.append(w[:-1] + w[-1].upper())
+    if len(w) >= 2:
+        out.append(w[0].upper() + w[1:-1] + w[-1].upper())
+    # return unique preserving order
+    seen = set()
+    res = []
+    for x in out:
+        if x not in seen:
+            res.append(x)
+            seen.add(x)
+    return res
 
-    return results
+# separators small set
+SEPARATORS = ["", "_", ".", "-"]
+
+def add_separators(word: str):
+    for s in SEPARATORS:
+        yield f"{word}{s}"
+
+# numbers and years limited lists
+COMMON_SUFFIXES = ["1", "12", "123", "1234", "01", "69", "7"]
+def add_numbers(word):
+    for n in COMMON_SUFFIXES:
+        yield f"{word}{n}"
+
+def add_years(word):
+    current = datetime.datetime.now().year
+    for y in (current, current-1, current-2):
+        yield f"{word}{y}"
+
+# special chars limited: only 1-char prefix/suffix and some 2-char combos
+SPECIALS = ['!', '"', '#', '$', '%', '&', '*']
+def add_specials_final(password: str, max_prefix=1, max_suffix=1):
+    # original
+    yield password
+    # 1-char prefix/suffix
+    for c in SPECIALS:
+        yield f"{c}{password}"
+        yield f"{password}{c}"
+        yield f"{c}{password}{c}"
+    # a small set of 2-char combos (not full cartesian) - pick most common pairs
+    two_combos = ['!#', '!$', '#$','*&']
+    for p in two_combos:
+        yield f"{p}{password}"
+        yield f"{password}{p}"
+
+# MASTER pipeline with options
+def apply_transformations(words, leet_enabled=False, include_low=False,
+                          max_leet_subs=2, enable_numbers=True, enable_years=True,
+                          enable_specials=True):
+    """
+    Controlled pipeline:
+      - accepts 'leet_enabled' flag
+      - transformations applied more aggressively to HIGH, less to MEDIUM, minimal to LOW
+    The combinators will call this with appropriately sliced lists.
+    """
+    transformed = set()
+
+    for w in words:
+        base = clean(w)
+        if not base:
+            continue
+
+        # case variants (list)
+        cases = apply_case_variants(base)
+
+        for c in cases:
+            # leet layer (generator) or just pass-through
+            if leet_enabled:
+                leet_iter = apply_leet_limited(c, max_subs=max_leet_subs)
+            else:
+                leet_iter = [c]
+
+            for lv in leet_iter:
+                # separators
+                for sv in add_separators(lv):
+                    # add original variant
+                    transformed.add(sv)
+                    # numbers
+                    if enable_numbers:
+                        for nv in add_numbers(sv):
+                            transformed.add(nv)
+                    # years
+                    if enable_years:
+                        for yv in add_years(sv):
+                            transformed.add(yv)
+                    # specials applied last (controlled)
+                    if enable_specials:
+                        for sp in add_specials_final(sv):
+                            transformed.add(sp)
+
+    return list(transformed)

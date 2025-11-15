@@ -1,87 +1,71 @@
 # combinators.py
+from .generators import extract_profile_variables, generate_base_words
+from .transforms import apply_transformations
+from .utils import dedupe
 
-from .utils import validate_email
-from .generators import (
-    generate_from_name, generate_from_email, generate_from_person,
-    generate_from_word, expand_leet, generate_pins_from_text
-)
-from .transforms import date_to_variations
+# generate_wordlist uses priority groups and conservative transforms
+def generate_wordlist(profile):
+    """
+    Build a prioritized wordlist:
+      - Apply stronger transforms to HIGH
+      - Medium transforms to MEDIUM (less specials / leet)
+      - Optionally include LOW with minimal transforms (no leet, limited specials)
+    """
+    # get variables
+    vars = extract_profile_variables(profile)
 
+    # Options derived from profile
+    leet_flag = bool(getattr(profile, "leet_enabled", False))
 
-# -------------------------------------
-# WORDLIST GENERATOR (MAIN)
-# -------------------------------------
+    final = []
 
-def generate_wordlist(mg):
+    # 1) HIGH priority: full transforms (leet optional, specials on)
+    high = vars["high"]
+    if high:
+        high_trans = apply_transformations(high,
+                                           leet_enabled=leet_flag,
+                                           include_low=False,
+                                           max_leet_subs=2,
+                                           enable_numbers=True,
+                                           enable_years=True,
+                                           enable_specials=True)
+        final.extend(high_trans)
 
-    words = []
+    # 2) MEDIUM priority: fewer specials, maybe no leet or limited
+    medium = vars["medium"]
+    if medium:
+        med_trans = apply_transformations(medium,
+                                          leet_enabled=False,    # safer by default
+                                          include_low=False,
+                                          max_leet_subs=1,
+                                          enable_numbers=True,
+                                          enable_years=False,     # fewer years
+                                          enable_specials=False)  # no heavy specials
+        final.extend(med_trans)
 
-    # Name
-    words.extend(generate_from_name(mg.name))
+    # 3) LOW priority: minimal transforms, only base and small suffixes
+    low = vars["low"]
+    if low:
+        low_trans = apply_transformations(low,
+                                          leet_enabled=False,
+                                          include_low=True,
+                                          max_leet_subs=0,
+                                          enable_numbers=False,
+                                          enable_years=False,
+                                          enable_specials=False)
+        final.extend(low_trans)
 
-    # Emails
-    for email in mg.emails:
-        if validate_email(email):
-            words.extend(generate_from_email(email))
+    # dedupe and keep order
+    final = dedupe(final)
 
-    # Relationships / children / pets
-    for rel in mg.relationships:
-        words.extend(generate_from_person(rel))
+    # optionally ensure base names appear first: prepend high base words
+    # we'll also add the raw high variables at top for priority
+    ordered = []
+    for w in high:
+        if w not in ordered:
+            ordered.append(w)
+    for w in final:
+        if w not in ordered:
+            ordered.append(w)
 
-    for child in mg.children:
-        words.extend(generate_from_person(child))
-
-    for pet in mg.pets:
-        words.extend(generate_from_person(pet))
-
-    # Important dates
-    for d in mg.important_dates:
-        words.extend(date_to_variations(d))
-
-    # Important words
-    for w in mg.keywords:
-        words.extend(generate_from_word(w))
-
-    # Expand with leet
-    expanded = expand_leet(words, max_subs=2)
-
-    return sorted(set(expanded))
-
-
-# -------------------------------------
-# PINLIST GENERATOR (MAIN)
-# -------------------------------------
-
-def generate_pinlist(mg):
-
-    pins = set()
-
-    all_textual_words = []
-
-    # Collect everything that is text-based
-    all_textual_words.extend(generate_from_name(mg.name))
-
-    for email in mg.emails:
-        if validate_email(email):
-            all_textual_words.extend(generate_from_email(email))
-
-    for rel in mg.relationships:
-        all_textual_words.extend(generate_from_person(rel))
-
-    for child in mg.children:
-        all_textual_words.extend(generate_from_person(child))
-
-    for pet in mg.pets:
-        all_textual_words.extend(generate_from_person(pet))
-
-    for w in mg.keywords:
-        all_textual_words.extend(generate_from_word(w))
-
-    # Generate PINs from text (T9, digits)
-    pins.update(generate_pins_from_text(all_textual_words))
-
-    # Add date-only combos
-    for d in mg.important_dates:
-        pins.update(date_to_variations(d))
-
-    return sorted(pins)
+    return ordered

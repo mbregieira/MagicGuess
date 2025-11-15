@@ -18,7 +18,7 @@ def get_banner():
 ║           ██████╔╝╚██████╔╝███████╗███████║███████║           ║
 ║           ╚═════╝  ╚═════╝ ╚══════╝╚══════╝╚══════╝           ║
 ║                                                               ║
-║          Target-Based Wordlist & PIN Generator                ║
+║          Target-Based Wordlist && PIN Generator               ║
 ║            Realistic Human Pattern Analysis                   ║
 ║                                                               ║
 ║                  by: Marcelo Bregieira                        ║
