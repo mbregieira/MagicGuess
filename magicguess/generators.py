@@ -168,24 +168,80 @@ def special_chars_variants(word):
 def append_common_numbers(word):
     return [word + n for n in COMMON_NUMBERS]
 
+# ---------------------------------------------------------
+# RELAÇÕES + FILHOS (estrutura unificada)
+# ---------------------------------------------------------
+
+def process_person_for_combinations(person, target_last, target_name_variants, target_dates):
+    """Processa relações ou filhos: remove apelido duplicado, gera variantes,
+       e retorna estrutura processada + wordlist própria."""
+    
+    all_words = []
+
+    # --- nome ---
+    raw_name = person.get("name", "")
+    if not raw_name:
+        return None, []
+
+    parts_raw = [p for p in raw_name.strip().split() if p]
+    parts = [sanitize_word(p) for p in parts_raw]
+
+    person_last = parts[-1].lower() if parts else ""
+
+    # remover apelido se igual ao do target
+    if person_last == target_last:
+        parts = parts[:-1]
+
+    if not parts:
+        return None, []
+
+    clean_name = " ".join(parts)
+    name_vars = name_variants(clean_name)
+
+    # --- nickname ---
+    nickname = person.get("nickname")
+    nickname_vars = toggle_case(sanitize_word(nickname)) if nickname else []
+
+    # --- datas ---
+    person_dates = date_variants(person.get("birth")) if person.get("birth") else []
+
+    # --- variantes isoladas ---
+    all_words += name_vars
+    for n in name_vars:
+        for dt in person_dates + target_dates:
+            all_words.append(n + dt)
+
+    all_words += nickname_vars
+    for nn in nickname_vars:
+        for dt in person_dates + target_dates:
+            all_words.append(nn + dt)
+
+    processed = {
+        "name_vars": name_vars,
+        "nickname_vars": nickname_vars,
+        "dates": person_dates
+    }
+
+    return processed, all_words
+
+
 # -------------------------
 # Geração da wordlist
 # -------------------------
 def generate_wordlist(profile):
     words = []
 
-    # 1) Nomes
-    if profile.name:
-        words += name_variants(profile.name)
+    # Nomes do target
+    target_name_variants = name_variants(profile.name) if profile.name else []
+    words += target_name_variants
 
-    # 2) Palavras importantes
+    # Palavras importantes
     for kw in profile.keywords:
         if kw:
             words += toggle_case(sanitize_word(normalize_string(kw)))
-
     words = dedupe(words)
 
-    # 3) Datas importantes
+    # Datas do target e importantes
     date_list = []
     if profile.birth:
         date_list += date_variants(profile.birth)
@@ -193,132 +249,89 @@ def generate_wordlist(profile):
         date_list += date_variants(d)
     date_list = dedupe(date_list)
 
-    # 4) Combina palavras importantes com datas
     important_words = words.copy()
+    target_last = sanitize_word(profile.name.strip().split()[-1]).lower() if profile.name else []
 
-    # ---------------------------------------------------------
-    # 4B) Relações - combinar nomes do target com cada relação
-    # ---------------------------------------------------------
-
+    # ------------------- RELAÇÕES -------------------------
     relation_words = []
-
-    # variantes do nome do target (first, last, first+last combos conforme name_variants)
-    target_name_variants = name_variants(profile.name)
-    # datas do target já calculadas (date_list)
-    target_dates = date_list
-
-    # apelido do target (sanitizado) usado para comparação
-    target_last = ""
-    if profile.name and profile.name.strip():
-        target_last = sanitize_word(profile.name.strip().split()[-1]).lower()
-
+    processed_relations = []
     for rel in profile.relationships:
-        rel_name_raw = rel.get("name", "") if rel else ""
-        if not rel_name_raw:
+        processed, words_alone = process_person_for_combinations(rel, target_last, target_name_variants, date_list)
+        if not processed:
             continue
+        processed_relations.append(processed)
+        relation_words += words_alone
 
-        # sanitizar partes da relação
-        rel_parts_raw = [p for p in rel_name_raw.strip().split() if p]
-        rel_parts = [sanitize_word(p) for p in rel_parts_raw]
-
-        # Se o último apelido da relação for igual ao apelido do target -> removê-lo
-        rel_last = ""
-        if rel_parts:
-            rel_last = rel_parts[-1].lower()
-
-        # se apelidos iguais -> tratar a relação como se não tivesse esse apelido
-        if rel_last and target_last and rel_last == target_last:
-            rel_parts_for_variants = rel_parts[:-1]  # drop last
-        else:
-            rel_parts_for_variants = rel_parts[:]  # manter completo
-
-        # Se, após remover o apelido, não houver partes úteis (e.g. só havia o apelido), saltar
-        if not rel_parts_for_variants:
-            continue
-
-        # construir string para gerar variantes
-        rel_name_for_variants = " ".join(rel_parts_for_variants)
-
-        # gerar variantes do nome da relação (respeita a regra "não explode")
-        rel_name_variants = name_variants(rel_name_for_variants)
-
-        # datas da relação (se existirem)
-        rel_dates = date_variants(rel.get("birth")) if rel.get("birth") else []
-
-        # -----------------------------
-        # Combinações: TargetName <-> RelationName
-        # -----------------------------
+        # Combos target <-> relação/nickname
         for tn in target_name_variants:
-            for rn in rel_name_variants:
-                combo1 = tn + rn
-                combo2 = rn + tn
-                relation_words.extend([combo1, combo2])
+            for rv in processed["name_vars"]:
+                relation_words += [tn + rv, rv + tn]
+                for dt in date_list + processed["dates"]:
+                    relation_words += [tn + rv + dt, rv + tn + dt]
+            for nn in processed["nickname_vars"]:
+                relation_words += [tn + nn, nn + tn]
+                for dt in date_list + processed["dates"]:
+                    relation_words += [tn + nn + dt, nn + tn + dt]
 
-                # adicionar COM APENAS UMA data: target OR relation (não ambas)
-                for dt in target_dates:
-                    relation_words.append(combo1 + dt)
-                    relation_words.append(combo2 + dt)
-                for dt in rel_dates:
-                    relation_words.append(combo1 + dt)
-                    relation_words.append(combo2 + dt)
+    # ------------------- FILHOS -------------------------
+    children_words = []
+    processed_children = []
+    for child in profile.children:
+        processed, words_alone = process_person_for_combinations(child, target_last, target_name_variants, date_list)
+        if not processed:
+            continue
+        processed_children.append(processed)
+        children_words += words_alone
 
-        # -----------------------------
-        # Combinações: TargetName <-> Nickname (se existir)
-        # -----------------------------
-        if rel.get("nickname"):
-            nn = sanitize_word(rel["nickname"])
-            if nn:
-                nick_toggles = toggle_case(nn)
-                for tn in target_name_variants:
-                    for nk in nick_toggles:
-                        combo1 = tn + nk
-                        combo2 = nk + tn
-                        relation_words.extend([combo1, combo2])
+        # Combos target <-> filho/nickname
+        for tn in target_name_variants:
+            for cv in processed["name_vars"]:
+                children_words += [tn + cv, cv + tn]
+                for dt in date_list + processed["dates"]:
+                    children_words += [tn + cv + dt, cv + tn + dt]
+            for nn in processed["nickname_vars"]:
+                children_words += [tn + nn, nn + tn]
+                for dt in date_list + processed["dates"]:
+                    children_words += [tn + nn + dt, nn + tn + dt]
 
-                        for dt in target_dates:
-                            relation_words.append(combo1 + dt)
-                            relation_words.append(combo2 + dt)
-                        for dt in rel_dates:
-                            relation_words.append(combo1 + dt)
-                            relation_words.append(combo2 + dt)
+    # Combos entre filhos (sem datas)
+    for c1, c2 in itertools.permutations(processed_children, 2):
+        for v1 in c1["name_vars"]:
+            for v2 in c2["name_vars"]:
+                children_words.append(v1 + v2)
 
-    # adicionar ao conjunto geral (depois estas serão deduplicadas e filtradas)
-    words += relation_words
+    words += relation_words + children_words
 
+    # Combos palavras importantes + datas
     combined_words = []
     for w in important_words:
         for dtv in date_list:
             combined_words.append(w + dtv)
-
     words += combined_words
     words += date_list  # manter datas isoladas
 
-    # 5) Aplicar números comuns apenas às palavras importantes
-    numbered_words = []
+    # Aplicar números comuns
     for w in important_words:
-        numbered_words += append_common_numbers(w)
-    words += numbered_words
+        words += append_common_numbers(w)
 
-    # 6) Aplicar caracteres especiais (inicio/fim/inicio+fim)
+    # Aplicar caracteres especiais
     final_words = []
     for w in words:
         final_words += special_chars_variants(w)
 
-    # 7) Aplica o LEET mode
+    # Aplicar LEET
     if profile.leet_enabled:
         leet_words = []
         for w in final_words:
             leet_words += apply_leet(w)
         final_words += leet_words
 
-
-    # 8) Dedup e filtrar palavras inválidas
+    # Dedup e filtrar inválidos
     final_words = dedupe(final_words)
     filtered = []
     for w in final_words:
         if len(w) < MIN_LENGTH:
             continue
-        # descartar se só números ou só especiais
         if w.isdigit():
             continue
         if all(c in SPECIAL_CHARS for c in w):
@@ -331,4 +344,57 @@ def generate_wordlist(profile):
 # TODO: PIN list
 # -------------------------
 def generate_pinlist(profile):
-    return []  # placeholder
+    """
+    PIN list simples:
+    - Apenas datas do utilizador, relações e filhos
+    - Apenas formatos de 4 e 6 dígitos: DDMM, MMYY, DDMMYY, MMDDYY
+    - Nunca gerar só ano
+    """
+    pins = set()
+
+    def extract_pins_from_date(d):
+        if not d:
+            return []
+
+        day = f"{d.day:02d}"
+        month = f"{d.month:02d}"
+        year = str(d.year)
+        year_short = year[-2:]
+
+        variants = set()
+
+        # 4 dígitos
+        variants.add(day + month)       # DDMM
+        variants.add(month + day)       # MMDD
+        variants.add(month + year_short)  # MMYY
+        variants.add(day + year_short)    # DDYY
+
+        # 6 dígitos
+        variants.add(day + month + year_short)  # DDMMYY
+        variants.add(month + day + year_short)  # MMDDYY
+        variants.add(day + month + year)        # DDMMYYYY (8 — opcional)
+        variants.add(month + day + year)        # MMDDYYYY
+
+        return variants
+
+    # Datas do target
+    if profile.birth:
+        pins.update(extract_pins_from_date(profile.birth))
+
+    for d in profile.important_dates:
+        pins.update(extract_pins_from_date(d))
+
+    # Datas das relações
+    for rel in profile.relationships:
+        if rel.get("birth"):
+            pins.update(extract_pins_from_date(rel["birth"]))
+
+    # Datas dos filhos
+    for child in profile.children:
+        if child.get("birth"):
+            pins.update(extract_pins_from_date(child["birth"]))
+
+    # filtro: PINs só numéricos
+    clean_pins = sorted([p for p in pins if p.isdigit()])
+
+    return clean_pins, len(clean_pins)
