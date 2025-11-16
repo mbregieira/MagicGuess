@@ -1,7 +1,5 @@
 # generators.py
 
-# generators.py
-
 from magicguess.utils import sanitize_word, dedupe, normalize_string
 from datetime import datetime
 import itertools
@@ -9,6 +7,31 @@ import itertools
 SPECIAL_CHARS = ['!', '@', '#', '$', '%', '&', '*']
 COMMON_NUMBERS = ["1", "12", "123", "1234", "69", "7", "17", "123456"]
 MIN_LENGTH = 6
+
+# -------------------------
+# LEET MAPPING
+# -------------------------
+LEET_MAP = {
+    "a": ["4", "@"],
+    "e": ["3"],
+    "i": ["1", "!", "|"],
+    "o": ["0"],
+    "s": ["5"]
+}
+
+def apply_leet(word):
+    """Aplica substituições simples, apenas 1 letra por vez, sem explosão."""
+    variants = set([word])
+
+    for idx, ch in enumerate(word.lower()):
+        if ch in LEET_MAP:
+            for sub in LEET_MAP[ch]:
+                new_word = list(word)
+                new_word[idx] = sub
+                variants.add("".join(new_word))
+
+    return list(variants)
+
 
 # -------------------------
 # Toggle case das palavras individuais
@@ -125,7 +148,15 @@ def generate_wordlist(profile):
     for w in words:
         final_words += special_chars_variants(w)
 
-    # 7) Dedup e filtrar palavras inválidas
+    # 7) Aplica o LEET mode
+    if profile.leet_enabled:
+        leet_words = []
+        for w in final_words:
+            leet_words += apply_leet(w)
+        final_words += leet_words
+
+
+    # 8) Dedup e filtrar palavras inválidas
     final_words = dedupe(final_words)
     filtered = []
     for w in final_words:
