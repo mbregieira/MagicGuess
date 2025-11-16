@@ -47,19 +47,85 @@ def toggle_case(word):
 # Nome variantes
 # -------------------------
 def name_variants(full_name: str):
-    """Gera variações de nomes individuais e compostos corretos."""
-    parts = [sanitize_word(p) for p in full_name.strip().split() if p]
-    individual_variants = [toggle_case(p) for p in parts]
+    """
+    Gera variações:
+      - toggles individuais de cada parte (first, middle(s), last)
+      - combinações compostas SOMENTE se incluírem o primeiro nome ou a inicial do primeiro
+      - inclui variante initial+middle+last (ex: MDinisBregieira)
+      - evita combos que sejam apenas middle+last (para não explodir)
+    """
+    parts_raw = [p for p in full_name.strip().split() if p]
+    parts = [sanitize_word(p) for p in parts_raw]
+    if not parts:
+        return []
 
-    # Flatten para nomes simples
-    simple_names = list(itertools.chain.from_iterable(individual_variants))
+    # toggles por parte (lista de listas)
+    toggles_per_part = [toggle_case(p) for p in parts]
 
-    # Combinar palavras individuais em nomes compostos
-    combined_variants = []
-    for combo in itertools.product(*individual_variants):
-        combined_variants.append(''.join(combo))
+    # 1) Variantes simples: todos os toggles individuais (first, middle(s), last)
+    simple_names = list(itertools.chain.from_iterable(toggles_per_part))
 
-    return dedupe(simple_names + combined_variants)
+    # 2) Combinações compostas — só combos que incluam a parte 0 (primeiro)
+    combined = []
+    # produto cartesiano de toggles (gera combos com todas as partes)
+    for combo in itertools.product(*toggles_per_part):
+        # combo é uma tupla com uma variante por parte, ex ("marcelo","dinis","bregieira")
+        # incluímos apenas se a combinação **mantém o primeiro** (sempre vai manter, pois produto inclui todas),
+        # mas podemos querer filtrar combos que não comecem com o primeiro (caso venham reordenados) — aqui mantemos a ordem original.
+        # O critério é: incluir combos que contenham o primeiro (sempre true) -> mas queremos também permitir combos parciais
+        # com apenas first+last (ignorando middle), e full first+middle+last.
+        # Vamos construir explicitamente as variantes desejadas:
+        combined_entry = ''.join(combo)
+        combined.append(combined_entry)
+
+    # 3) Also include first+last only (skip middles) — but using toggles:
+    if len(parts) >= 2:
+        first_toggles = toggles_per_part[0]
+        last_toggles = toggles_per_part[-1]
+        for f in first_toggles:
+            for l in last_toggles:
+                combined.append(f + l)
+
+    # 4) Include initial(first) + middle(s) + last (if there are >=3 parts or even with 2 parts the initial+last is allowed)
+    first_initials = []
+    first_raw = parts[0]
+    if first_raw:
+        fi_lower = first_raw[0].lower()
+        fi_cap = first_raw[0].upper()
+        first_initials = [fi_lower, fi_cap]
+
+    if len(parts) >= 2:
+        # build combos where first replaced by its initial and the rest follow with their toggles
+        # toggles for middle(s) and last:
+        if len(parts) == 2:
+            # initial + last
+            for init in first_initials:
+                for l in toggles_per_part[-1]:
+                    combined.append(init + l)
+        else:
+            # initial + middle(s) + last
+            middle_toggles_product = list(itertools.product(*toggles_per_part[1:]))  # includes middle(s) + last
+            for init in first_initials:
+                for mid_combo in middle_toggles_product:
+                    combined.append(init + ''.join(mid_combo))
+
+    # 5) Deduplicate and return: include simple_names and combined (but filter out unwanted middle+last-only combos)
+    # Filter rule: remove any combined that starts with a middle part (i.e., does not start with any toggle of the first or first initial)
+    allowed_prefixes = set(toggles_per_part[0])  # e.g. {'marcelo','Marcelo','marcelO'}
+    allowed_prefixes.update([parts[0][0].lower(), parts[0][0].upper()])  # add initials 'm' and 'M'
+
+    filtered_combined = []
+    for c in combined:
+        # check if c starts with any allowed prefix:
+        if any(c.startswith(pref) for pref in allowed_prefixes):
+            filtered_combined.append(c)
+        else:
+            # ignore combos that do not start with first or initial (this excludes middle+last)
+            continue
+
+    result = dedupe(simple_names + filtered_combined)
+
+    return result
 
 # -------------------------
 # Datas variantes
