@@ -224,6 +224,84 @@ def process_person_for_combinations(person, target_last, target_name_variants, t
 
     return processed, all_words
 
+# -------------------------
+# PETS
+# -------------------------
+def process_pet_for_combinations(pet, target_name_variants, target_dates):
+    """
+    Gera variantes para pets:
+      - Nome do pet
+      - Alcunha do pet
+      - Combos target <-> pet
+      - Combos entre pets (sem datas)
+    """
+    all_words = []
+
+    raw_name = pet.get("name", "")
+    if not raw_name:
+        return None, []
+
+    parts_raw = [p for p in raw_name.strip().split() if p]
+    parts = [sanitize_word(p) for p in parts_raw]
+
+    if not parts:
+        return None, []
+
+    clean_name = " ".join(parts)
+    name_vars = name_variants(clean_name)
+
+    nickname = pet.get("nickname")
+    nickname_vars = toggle_case(sanitize_word(nickname)) if nickname else []
+
+    pet_dates = date_variants(pet.get("birth")) if pet.get("birth") else []
+
+    # --- Palavras isoladas do pet ---
+    all_words += name_vars
+    all_words += nickname_vars
+
+    # --- Combos target <-> pet ---
+    for tn in target_name_variants:
+        for nv in name_vars:
+            # target+pet
+            all_words.append(tn + nv)
+            all_words.append(nv + tn)
+            # com datas: apenas uma data por combinação
+            for dt in target_dates + pet_dates:
+                all_words.append(tn + nv + dt)
+                all_words.append(nv + tn + dt)
+
+        for nn in nickname_vars:
+            # target+alcunha
+            all_words.append(tn + nn)
+            all_words.append(nn + tn)
+            # com datas
+            for dt in target_dates + pet_dates:
+                all_words.append(tn + nn + dt)
+                all_words.append(nn + tn + dt)
+
+    processed = {
+        "name_vars": name_vars,
+        "nickname_vars": nickname_vars,
+        "dates": pet_dates
+    }
+
+    return processed, all_words
+
+# -------------------------
+# Combos entre pets
+# -------------------------
+def combine_pets(processed_pets):
+    """
+    Combina nomes/alcunhas entre pets.
+    NUNCA usar datas ou criar passwords só com datas.
+    """
+    pet_words = []
+    for p1, p2 in itertools.permutations(processed_pets, 2):
+        for n1 in p1["name_vars"] + p1["nickname_vars"]:
+            for n2 in p2["name_vars"] + p2["nickname_vars"]:
+                pet_words.append(n1 + n2)
+    return pet_words
+
 
 # -------------------------
 # Geração da wordlist
@@ -301,6 +379,36 @@ def generate_wordlist(profile):
                 children_words.append(v1 + v2)
 
     words += relation_words + children_words
+
+    # ------------------- PETS -------------------------
+    pet_words = []
+    processed_pets = []
+
+    for pet in profile.pets:
+        processed, words_alone = process_pet_for_combinations(pet, target_name_variants, date_list)
+        if not processed:
+            continue
+        processed_pets.append(processed)
+        pet_words += words_alone
+
+    pet_words += combine_pets(processed_pets)
+    # --- Variantes com datas do próprio pet ---
+    for pet in processed_pets:
+        for nv in pet["name_vars"] + pet["nickname_vars"]:
+            for dt in pet["dates"]:
+                # adicionar nv + dt
+                pet_words.append(nv + dt)
+                # aplicar números comuns
+                for n in COMMON_NUMBERS:
+                    pet_words.append(nv + dt + n)
+                # aplicar caracteres especiais
+                for c in SPECIAL_CHARS:
+                    pet_words.append(nv + dt + c)
+                    pet_words.append(c + nv + dt)
+                    pet_words.append(c + nv + dt + c)
+
+    words += pet_words
+
 
     # Combos palavras importantes + datas
     combined_words = []
