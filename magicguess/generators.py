@@ -195,6 +195,96 @@ def generate_wordlist(profile):
 
     # 4) Combina palavras importantes com datas
     important_words = words.copy()
+
+    # ---------------------------------------------------------
+    # 4B) Relações - combinar nomes do target com cada relação
+    # ---------------------------------------------------------
+
+    relation_words = []
+
+    # variantes do nome do target (first, last, first+last combos conforme name_variants)
+    target_name_variants = name_variants(profile.name)
+    # datas do target já calculadas (date_list)
+    target_dates = date_list
+
+    # apelido do target (sanitizado) usado para comparação
+    target_last = ""
+    if profile.name and profile.name.strip():
+        target_last = sanitize_word(profile.name.strip().split()[-1]).lower()
+
+    for rel in profile.relationships:
+        rel_name_raw = rel.get("name", "") if rel else ""
+        if not rel_name_raw:
+            continue
+
+        # sanitizar partes da relação
+        rel_parts_raw = [p for p in rel_name_raw.strip().split() if p]
+        rel_parts = [sanitize_word(p) for p in rel_parts_raw]
+
+        # Se o último apelido da relação for igual ao apelido do target -> removê-lo
+        rel_last = ""
+        if rel_parts:
+            rel_last = rel_parts[-1].lower()
+
+        # se apelidos iguais -> tratar a relação como se não tivesse esse apelido
+        if rel_last and target_last and rel_last == target_last:
+            rel_parts_for_variants = rel_parts[:-1]  # drop last
+        else:
+            rel_parts_for_variants = rel_parts[:]  # manter completo
+
+        # Se, após remover o apelido, não houver partes úteis (e.g. só havia o apelido), saltar
+        if not rel_parts_for_variants:
+            continue
+
+        # construir string para gerar variantes
+        rel_name_for_variants = " ".join(rel_parts_for_variants)
+
+        # gerar variantes do nome da relação (respeita a regra "não explode")
+        rel_name_variants = name_variants(rel_name_for_variants)
+
+        # datas da relação (se existirem)
+        rel_dates = date_variants(rel.get("birth")) if rel.get("birth") else []
+
+        # -----------------------------
+        # Combinações: TargetName <-> RelationName
+        # -----------------------------
+        for tn in target_name_variants:
+            for rn in rel_name_variants:
+                combo1 = tn + rn
+                combo2 = rn + tn
+                relation_words.extend([combo1, combo2])
+
+                # adicionar COM APENAS UMA data: target OR relation (não ambas)
+                for dt in target_dates:
+                    relation_words.append(combo1 + dt)
+                    relation_words.append(combo2 + dt)
+                for dt in rel_dates:
+                    relation_words.append(combo1 + dt)
+                    relation_words.append(combo2 + dt)
+
+        # -----------------------------
+        # Combinações: TargetName <-> Nickname (se existir)
+        # -----------------------------
+        if rel.get("nickname"):
+            nn = sanitize_word(rel["nickname"])
+            if nn:
+                nick_toggles = toggle_case(nn)
+                for tn in target_name_variants:
+                    for nk in nick_toggles:
+                        combo1 = tn + nk
+                        combo2 = nk + tn
+                        relation_words.extend([combo1, combo2])
+
+                        for dt in target_dates:
+                            relation_words.append(combo1 + dt)
+                            relation_words.append(combo2 + dt)
+                        for dt in rel_dates:
+                            relation_words.append(combo1 + dt)
+                            relation_words.append(combo2 + dt)
+
+    # adicionar ao conjunto geral (depois estas serão deduplicadas e filtradas)
+    words += relation_words
+
     combined_words = []
     for w in important_words:
         for dtv in date_list:
