@@ -138,7 +138,7 @@ def generate_wordlist(profile):
             continue
         filtered.append(w)
 
-    return filtered
+    return filtered, len(filtered)
 
 # -------------------------
 # TODO: PIN list

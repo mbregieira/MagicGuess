@@ -102,10 +102,12 @@ def main_cli():
 
     if mg.generate_wordlist:
         mg.leet_enabled = ask_yes_no("Enable leet transformations?")
-        mg.wordlist = generate_wordlist(mg)
+        mg.wordlist, mg.wordlist_count = generate_wordlist(mg)
         filename = input("Save wordlist to filename (default: wordlist.txt): ").strip()
         if not filename:
             filename = "wordlist.txt"
         save_wordlist(mg.wordlist, filename)
+
+    print(f"[+] Wordlist generated with {mg.wordlist_count} entries.")
 
     print("\n[+] MagicGuess completed!")
