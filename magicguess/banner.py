@@ -1,6 +1,7 @@
 
-# Banner for MagicGuess (Love it!)
+# Banner for MagicGuess
 def get_banner():
+    """Return the ASCII art banner for MagicGuess."""
     return r"""
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
