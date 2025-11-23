@@ -434,6 +434,44 @@ def generate_wordlist(profile):
 
     words += relation_combos
 
+    # ------------------- IMPORTANT DATES -------------------------
+
+    # -------------------------
+    # Combos com datas importantes
+    # -------------------------
+    all_entities = []
+
+    # Target
+    all_entities += target_name_variants
+
+    # Relations
+    for rel in processed_relations:
+        all_entities += rel["name_vars"] + rel["nickname_vars"]
+
+    # Children
+    for child in processed_children:
+        all_entities += child["name_vars"] + child["nickname_vars"]
+
+    # Pets
+    for pet in processed_pets:
+        all_entities += pet["name_vars"] + pet["nickname_vars"]
+
+    # Important words
+    all_entities += important_words
+
+    # Combinações entity <-> date
+    date_combos = []
+    for entity in all_entities:
+        for dtv in date_list:
+            date_combos.append(entity + dtv)
+            date_combos.append(dtv + entity)
+
+    # Adiciona à wordlist
+    words += date_combos
+
+
+
+
     # Aplicar números comuns
     for w in important_words:
         words += append_common_numbers(w)

@@ -1,3 +1,5 @@
+# core.py
+
 # Criar o objeto principal que vai ser a base para as combinações e posteriores transformações
 
 from datetime import date

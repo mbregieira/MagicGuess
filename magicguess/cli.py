@@ -48,9 +48,11 @@ def create_masterguess():
         raw = input("Enter comma-separated (DD/MM/YYYY): ").strip()
         if raw:
             for d in [x.strip() for x in raw.split(",")]:
-                dt_obj = ask_date(f"Validate {d}? (press Enter to accept or retype)")
-                if dt_obj:
-                    important_dates.append(dt_obj)
+                if validate_date(d):
+                    day, month, year = map(int, d.split("/"))
+                    important_dates.append(dt(year, month, day))
+                else:
+                    print(f"Invalid date format: {d}")
 
     # Important words
     important_words = []
