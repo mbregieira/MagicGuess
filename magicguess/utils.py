@@ -1,4 +1,4 @@
-# dedupe, shuffle, load/save wordlists
+# utils.py
 
 import os
 import platform
@@ -97,3 +97,13 @@ def normalize_string(s: str) -> str:
     Converts to lowercase.
     """
     return re.sub(r"[^A-Za-z0-9]", "", s)
+
+def all_upper(word: str) -> bool:
+    """
+    True if all alphabetic characters are uppercase.
+    Ignores numbers and special characters.
+    """
+    letters = [c for c in word if c.isalpha()]
+    if not letters:  # if there are no letters, it is not considered "all upper"
+        return False
+    return all(c.isupper() for c in letters)

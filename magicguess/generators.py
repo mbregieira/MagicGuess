@@ -1,10 +1,10 @@
 # generators.py
 
-from magicguess.utils import sanitize_word, dedupe, normalize_string
+from magicguess.utils import sanitize_word, dedupe, normalize_string, all_upper
 from datetime import datetime
 import itertools
 
-SPECIAL_CHARS = ['!', '@', '#', '$', '%', '&', '*']
+SPECIAL_CHARS = ['!', '@', '#', '$', '%', '&', '*', '"']
 COMMON_NUMBERS = ["1", "12", "123", "1234", "69", "7", "17", "123456"]
 MIN_LENGTH = 6
 
@@ -409,14 +409,30 @@ def generate_wordlist(profile):
 
     words += pet_words
 
+    # ------------------- IMPORTANT WORDS -------------------------
 
-    # Combos palavras importantes + datas
-    combined_words = []
+    # -------------------------
+    # Combos target <-> important words
+    # -------------------------
+    important_combos = []
     for w in important_words:
-        for dtv in date_list:
-            combined_words.append(w + dtv)
-    words += combined_words
-    words += date_list  # manter datas isoladas
+        for tn in target_name_variants:
+            important_combos.append(tn + w)
+            important_combos.append(w + tn)
+
+    words += important_combos
+
+    # -------------------------
+    # Combos target <-> relationships
+    # -------------------------
+    relation_combos = []
+    for rel in processed_relations:
+        for tn in target_name_variants:
+            for rv in rel["name_vars"] + rel["nickname_vars"]:
+                relation_combos.append(tn + rv)
+                relation_combos.append(rv + tn)
+
+    words += relation_combos
 
     # Aplicar números comuns
     for w in important_words:
@@ -443,6 +459,8 @@ def generate_wordlist(profile):
         if w.isdigit():
             continue
         if all(c in SPECIAL_CHARS for c in w):
+            continue
+        if all_upper(w):
             continue
         filtered.append(w)
 
