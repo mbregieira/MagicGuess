@@ -20,7 +20,7 @@ LEET_MAP = {
 }
 
 def apply_leet(word):
-    """Aplica substituições simples, apenas 1 letra por vez, sem explosão."""
+    """Applies simple substitutions, only 1 letter at a time, without explosion."""
     variants = set([word])
 
     for idx, ch in enumerate(word.lower()):
@@ -34,7 +34,7 @@ def apply_leet(word):
 
 
 # -------------------------
-# Toggle case das palavras individuais
+# Toggle case of individual words
 # -------------------------
 def toggle_case(word):
     return list(dedupe([
@@ -44,37 +44,31 @@ def toggle_case(word):
     ]))
 
 # -------------------------
-# Nome variantes
+# Name variants
 # -------------------------
 def name_variants(full_name: str):
     """
-    Gera variações:
-      - toggles individuais de cada parte (first, middle(s), last)
-      - combinações compostas SOMENTE se incluírem o primeiro nome ou a inicial do primeiro
-      - inclui variante initial+middle+last (ex: MDinisBregieira)
-      - evita combos que sejam apenas middle+last (para não explodir)
+    Generates variations:
+      - individual toggles of each part (first, middle(s), last)
+      - compound combinations ONLY if they include the first name or the first initial
+      - includes initial+middle+last variant (e.g., MDinisBregieira)
+      - avoids combos that are only middle+last (to prevent explosion)
     """
     parts_raw = [p for p in full_name.strip().split() if p]
     parts = [sanitize_word(p) for p in parts_raw]
     if not parts:
         return []
 
-    # toggles por parte (lista de listas)
+    # toggles per part (list of lists)
     toggles_per_part = [toggle_case(p) for p in parts]
 
-    # 1) Variantes simples: todos os toggles individuais (first, middle(s), last)
+    # 1) Simple variants: all individual toggles (first, middle(s), last)
     simple_names = list(itertools.chain.from_iterable(toggles_per_part))
 
-    # 2) Combinações compostas — só combos que incluam a parte 0 (primeiro)
+    # 2) Compound combinations — only combos that include part 0 (first)
     combined = []
-    # produto cartesiano de toggles (gera combos com todas as partes)
+    # Cartesian product of toggles (generates combos with all parts)
     for combo in itertools.product(*toggles_per_part):
-        # combo é uma tupla com uma variante por parte, ex ("marcelo","dinis","bregieira")
-        # incluímos apenas se a combinação **mantém o primeiro** (sempre vai manter, pois produto inclui todas),
-        # mas podemos querer filtrar combos que não comecem com o primeiro (caso venham reordenados) — aqui mantemos a ordem original.
-        # O critério é: incluir combos que contenham o primeiro (sempre true) -> mas queremos também permitir combos parciais
-        # com apenas first+last (ignorando middle), e full first+middle+last.
-        # Vamos construir explicitamente as variantes desejadas:
         combined_entry = ''.join(combo)
         combined.append(combined_entry)
 
@@ -128,7 +122,7 @@ def name_variants(full_name: str):
     return result
 
 # -------------------------
-# Datas variantes
+# Date variants
 # -------------------------
 def date_variants(d):
     if not d:
@@ -144,7 +138,7 @@ def date_variants(d):
         for month in months:
             for year in [year_full, year_short]:
                 variants.add(f"{day}{month}{year}")
-                variants.add(f"{month}{day}{year}")  # invertido
+                variants.add(f"{month}{day}{year}")  # inverted
 
     variants.add(year_full)
     variants.add(year_short)
@@ -152,7 +146,7 @@ def date_variants(d):
     return list(dedupe(variants))
 
 # -------------------------
-# Caracteres especiais
+# Special characters
 # -------------------------
 def special_chars_variants(word):
     variants = [word]
@@ -163,18 +157,18 @@ def special_chars_variants(word):
     return variants
 
 # -------------------------
-# Números comuns
+# Common numbers
 # -------------------------
 def append_common_numbers(word):
     return [word + n for n in COMMON_NUMBERS]
 
 # ---------------------------------------------------------
-# RELAÇÕES + FILHOS (estrutura unificada)
+# RELATIONS + CHILDREN (unified structure)
 # ---------------------------------------------------------
 
 def process_person_for_combinations(person, target_last, target_name_variants, target_dates):
-    """Processa relações ou filhos: remove apelido duplicado, gera variantes,
-       e retorna estrutura processada + wordlist própria."""
+    """Process relations or children: remove duplicate nickname, generate variants,
+       and return processed structure + own wordlist."""
     
     all_words = []
 
@@ -188,7 +182,7 @@ def process_person_for_combinations(person, target_last, target_name_variants, t
 
     person_last = parts[-1].lower() if parts else ""
 
-    # remover apelido se igual ao do target
+    # remove nickname if equal to target's last name
     if person_last == target_last:
         parts = parts[:-1]
 
@@ -202,10 +196,10 @@ def process_person_for_combinations(person, target_last, target_name_variants, t
     nickname = person.get("nickname")
     nickname_vars = toggle_case(sanitize_word(nickname)) if nickname else []
 
-    # --- datas ---
+    # --- dates ---
     person_dates = date_variants(person.get("birth")) if person.get("birth") else []
 
-    # --- variantes isoladas ---
+    # --- isolated variants ---
     all_words += name_vars
     for n in name_vars:
         for dt in person_dates + target_dates:
@@ -229,11 +223,11 @@ def process_person_for_combinations(person, target_last, target_name_variants, t
 # -------------------------
 def process_pet_for_combinations(pet, target_name_variants, target_dates):
     """
-    Gera variantes para pets:
-      - Nome do pet
-      - Alcunha do pet
+    Generate variants for pets:
+      - Name of the pet
+      - Nickname of the pet
       - Combos target <-> pet
-      - Combos entre pets (sem datas)
+      - Combos between pets (without dates)
     """
     all_words = []
 
@@ -255,7 +249,7 @@ def process_pet_for_combinations(pet, target_name_variants, target_dates):
 
     pet_dates = date_variants(pet.get("birth")) if pet.get("birth") else []
 
-    # --- Palavras isoladas do pet ---
+    # --- Isolated words of the pet ---
     all_words += name_vars
     all_words += nickname_vars
 
@@ -265,16 +259,16 @@ def process_pet_for_combinations(pet, target_name_variants, target_dates):
             # target+pet
             all_words.append(tn + nv)
             all_words.append(nv + tn)
-            # com datas: apenas uma data por combinação
+            # with dates: only one date per combination
             for dt in target_dates + pet_dates:
                 all_words.append(tn + nv + dt)
                 all_words.append(nv + tn + dt)
 
         for nn in nickname_vars:
-            # target+alcunha
+            # target+nickname
             all_words.append(tn + nn)
             all_words.append(nn + tn)
-            # com datas
+            # with dates
             for dt in target_dates + pet_dates:
                 all_words.append(tn + nn + dt)
                 all_words.append(nn + tn + dt)
@@ -288,12 +282,12 @@ def process_pet_for_combinations(pet, target_name_variants, target_dates):
     return processed, all_words
 
 # -------------------------
-# Combos entre pets
+# Combos between pets
 # -------------------------
 def combine_pets(processed_pets):
     """
-    Combina nomes/alcunhas entre pets.
-    NUNCA usar datas ou criar passwords só com datas.
+    Combine names/nicknames between pets.
+    NEVER use dates or create passwords with only dates.
     """
     pet_words = []
     for p1, p2 in itertools.permutations(processed_pets, 2):
@@ -304,7 +298,7 @@ def combine_pets(processed_pets):
 
 
 # -------------------------
-# Geração da wordlist
+# Wordlist generation
 # -------------------------
 def generate_wordlist(profile):
     words = []
@@ -319,7 +313,7 @@ def generate_wordlist(profile):
             words += toggle_case(sanitize_word(normalize_string(kw)))
     words = dedupe(words)
 
-    # Datas do target e importantes
+    # Target and important dates
     date_list = []
     if profile.birth:
         date_list += date_variants(profile.birth)
@@ -330,7 +324,7 @@ def generate_wordlist(profile):
     important_words = words.copy()
     target_last = sanitize_word(profile.name.strip().split()[-1]).lower() if profile.name else []
 
-    # ------------------- RELAÇÕES -------------------------
+    # ------------------- RELATIONS -------------------------
     relation_words = []
     processed_relations = []
     for rel in profile.relationships:
@@ -340,7 +334,7 @@ def generate_wordlist(profile):
         processed_relations.append(processed)
         relation_words += words_alone
 
-        # Combos target <-> relação/nickname
+        # Combos target <-> relation/nickname
         for tn in target_name_variants:
             for rv in processed["name_vars"]:
                 relation_words += [tn + rv, rv + tn]
@@ -351,7 +345,7 @@ def generate_wordlist(profile):
                 for dt in date_list + processed["dates"]:
                     relation_words += [tn + nn + dt, nn + tn + dt]
 
-    # ------------------- FILHOS -------------------------
+    # ------------------- CHILDREN -------------------------
     children_words = []
     processed_children = []
     for child in profile.children:
@@ -361,7 +355,7 @@ def generate_wordlist(profile):
         processed_children.append(processed)
         children_words += words_alone
 
-        # Combos target <-> filho/nickname
+        # Combos target <-> child/nickname
         for tn in target_name_variants:
             for cv in processed["name_vars"]:
                 children_words += [tn + cv, cv + tn]
@@ -372,7 +366,7 @@ def generate_wordlist(profile):
                 for dt in date_list + processed["dates"]:
                     children_words += [tn + nn + dt, nn + tn + dt]
 
-    # Combos entre filhos (sem datas)
+    # Combos between children (without dates)
     for c1, c2 in itertools.permutations(processed_children, 2):
         for v1 in c1["name_vars"]:
             for v2 in c2["name_vars"]:
@@ -392,7 +386,7 @@ def generate_wordlist(profile):
         pet_words += words_alone
 
     pet_words += combine_pets(processed_pets)
-    # --- Variantes com datas do próprio pet ---
+    # --- Variantes of pets with dates ---
     for pet in processed_pets:
         for nv in pet["name_vars"] + pet["nickname_vars"]:
             for dt in pet["dates"]:
@@ -436,9 +430,6 @@ def generate_wordlist(profile):
 
     # ------------------- IMPORTANT DATES -------------------------
 
-    # -------------------------
-    # Combos com datas importantes
-    # -------------------------
     all_entities = []
 
     # Target
@@ -466,29 +457,32 @@ def generate_wordlist(profile):
             date_combos.append(entity + dtv)
             date_combos.append(dtv + entity)
 
-    # Adiciona à wordlist
+    # Add to the wordlist
     words += date_combos
 
 
+    # ------------------- COMMON NUMBERS -------------------------
 
-
-    # Aplicar números comuns
     for w in important_words:
         words += append_common_numbers(w)
 
-    # Aplicar caracteres especiais
+    # ------------------- SPECIAL CHARACTERS -------------------------
+
     final_words = []
     for w in words:
         final_words += special_chars_variants(w)
 
-    # Aplicar LEET
+    # ------------------- LEET MODE -------------------------
+
     if profile.leet_enabled:
         leet_words = []
         for w in final_words:
             leet_words += apply_leet(w)
         final_words += leet_words
 
-    # Dedup e filtrar inválidos
+ 
+    # ------------------- DEDUPLICATION AND FILTERING -------------------------
+
     final_words = dedupe(final_words)
     filtered = []
     for w in final_words:
