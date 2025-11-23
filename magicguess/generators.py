@@ -334,6 +334,9 @@ def generate_wordlist(profile):
         processed_relations.append(processed)
         relation_words += words_alone
 
+        for dt in processed["dates"]:
+            date_list.append(dt)
+
         # Combos target <-> relation/nickname
         for tn in target_name_variants:
             for rv in processed["name_vars"]:
@@ -354,6 +357,9 @@ def generate_wordlist(profile):
             continue
         processed_children.append(processed)
         children_words += words_alone
+
+        for dt in processed["dates"]:
+            date_list.append(dt)
 
         # Combos target <-> child/nickname
         for tn in target_name_variants:
@@ -384,6 +390,11 @@ def generate_wordlist(profile):
             continue
         processed_pets.append(processed)
         pet_words += words_alone
+
+        for dt in processed["dates"]:
+            date_list.append(dt)
+
+    date_list = dedupe(date_list)
 
     pet_words += combine_pets(processed_pets)
     # --- Variantes of pets with dates ---
