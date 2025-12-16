@@ -510,11 +510,11 @@ def generate_pinlist(profile, length=4):
     Generate PIN list based on dates in the profile.
         Returns the PIN list and its count.
     """
-    pins = set()
+    from pathlib import Path
 
     def extract_pins_from_date(d):
         if not d:
-            return []
+            return set()
 
         day = f"{d.day:02d}"
         month = f"{d.month:02d}"
@@ -522,39 +522,98 @@ def generate_pinlist(profile, length=4):
         year_short = year[-2:]
 
         variants = set()
+        # basic combos
+        variants.update({day + month, month + day, month + year_short, day + year_short})
+        variants.update({day + month + year_short, month + day + year_short, day + month + year, month + day + year})
+        variants.update({year, year_short})
+        return {v for v in variants if v.isdigit()}
 
-        # 4 dígitos
-        variants.add(day + month)       # DDMM
-        variants.add(month + day)       # MMDD
-        variants.add(month + year_short)  # MMYY
-        variants.add(day + year_short)    # DDYY
-
-        # 6 dígitos
-        variants.add(day + month + year_short)  # DDMMYY
-        variants.add(month + day + year_short)  # MMDDYY
-        variants.add(day + month + year)        # DDMMYYYY (8 — opcional)
-        variants.add(month + day + year)        # MMDDYYYY
-
-        return variants
-
-    # Datas do target
+    # collect date-based pins
+    pins = set()
     if profile.birth:
         pins.update(extract_pins_from_date(profile.birth))
-
     for d in profile.important_dates:
         pins.update(extract_pins_from_date(d))
-
-    # Datas das relações
     for rel in profile.relationships:
         if rel.get("birth"):
             pins.update(extract_pins_from_date(rel["birth"]))
-
-    # Datas dos filhos
     for child in profile.children:
         if child.get("birth"):
             pins.update(extract_pins_from_date(child["birth"]))
+    for pet in profile.pets:
+        if pet.get("birth"):
+            pins.update(extract_pins_from_date(pet["birth"]))
 
-    # filtro: PINs só numéricos
-    clean_pins = sorted([p for p in pins if p.isdigit()])
+    # filter for requested length
+    generated = [p for p in sorted(pins) if len(p) == int(length)]
 
-    return clean_pins, len(clean_pins)
+    # Load base Markov PIN file and prioritize generated pins
+    base_file = Path(__file__).parent / f"PIN{length}_markov.txt"
+    base_list = []
+    if base_file.exists():
+        try:
+            raw = base_file.read_bytes()
+            encoding = None
+            # detect BOMs
+            if raw.startswith(b"\xef\xbb\xbf"):
+                encoding = "utf-8-sig"
+            elif raw.startswith(b"\xff\xfe"):
+                encoding = "utf-16"
+            elif raw.startswith(b"\xfe\xff"):
+                encoding = "utf-16-be"
+
+            if not encoding:
+                # try utf-8 first, then fallback to latin-1
+                try:
+                    text = raw.decode("utf-8")
+                    encoding = "utf-8"
+                except Exception:
+                    try:
+                        text = raw.decode("utf-16")
+                        encoding = "utf-16"
+                    except Exception:
+                        text = raw.decode("latin-1")
+                        encoding = "latin-1"
+            else:
+                text = raw.decode(encoding)
+
+            base_list = [ln.strip() for ln in text.splitlines() if ln.strip()]
+            print(f"[+] Loaded base PIN list from {base_file.name} ({len(base_list)} entries) using encoding {encoding}")
+        except Exception as e:
+            print(f"[!] Failed to read {base_file.name}: {e}")
+            base_list = []
+    else:
+        print(f"[!] Base PIN file not found: {base_file.name}. Using generated date-based PINs only.")
+        print("[!] To create a full PIN markov file yourself (recommended to keep the repo small), run:")
+        print(f"    hashcat -a 3 {'?d'*int(length)} --stdout > {base_file.name}")
+        print("  Example for 7-digit PINs:")
+        print(f"    hashcat -a 3 ?d?d?d?d?d?d?d --stdout > {base_file.parent / ('PIN7_markov.txt')}")
+
+    # Build final list: generated first, then remaining base entries not duplicated
+    generated_set = set(generated)
+    final = []
+    # add generated (keep order as sorted)
+    for p in generated:
+        final.append(p)
+
+    # then add from base_list if not present
+    for p in base_list:
+        if not p.isdigit():
+            continue
+        if len(p) != int(length):
+            continue
+        if p in generated_set:
+            continue
+        final.append(p)
+
+    # ensure uniqueness
+    final_unique = []
+    seen = set()
+    for p in final:
+        if p in seen:
+            continue
+        seen.add(p)
+        final_unique.append(p)
+
+    print(f"[+] Generated {len(generated)} date-based PINs; final PINlist length: {len(final_unique)}")
+    return final_unique, len(final_unique)

@@ -1,7 +1,7 @@
 # cli.py
 from magicguess.core import MasterGuess
 from magicguess.utils import validate_date, validate_email
-from magicguess.generators import generate_wordlist
+from magicguess.generators import generate_wordlist, generate_pinlist
 from magicguess.io_handlers import save_wordlist
 
 from datetime import date as dt
@@ -105,6 +105,17 @@ def main_cli():
         print("Exiting MagicGuess.")
         return
 
+    if choice == "pinlist" or choice == "both":
+        pinlist_length = input("\n[!] What is the desired PIN length? (Press Enter for default 4-digit PINs. e.g. 6) ")
+        if not pinlist_length:
+            pinlist_length = 4
+        else:
+            try:
+                pinlist_length = int(pinlist_length)
+            except ValueError:
+                print("Invalid PIN length. Using default 4-digit PINs.")
+                pinlist_length = 4
+
     mg.generate_wordlist = choice in ["wordlist", "both"]
     mg.generate_pinlist = choice in ["pinlist", "both"]
 
@@ -116,6 +127,16 @@ def main_cli():
             filename = "AwesomeWordlist.txt"
         save_wordlist(mg.wordlist, filename)
 
-    print(f"[+] Wordlist generated with {mg.wordlist_count} entries.")
+    if mg.generate_pinlist:
+        mg.pinlist, mg.pinlist_count = generate_pinlist(mg, pinlist_length)
+        filename = input("[+] Save PIN list to filename (default: AwesomePINlist.txt): ").strip()
+        if not filename:
+            filename = "AwesomePINlist.txt"
+        save_wordlist(mg.pinlist, filename)
+
+    if mg.generate_wordlist:
+        print(f"[+] Wordlist generated with {getattr(mg, 'wordlist_count', 0)} entries.")
+    if mg.generate_pinlist:
+        print(f"[+] PIN list generated with {getattr(mg, 'pinlist_count', 0)} entries.")
 
     print("\n[+] MagicGuess completed!")
