@@ -33,6 +33,52 @@ def apply_leet(word):
 
     return list(variants)
 
+
+# -------------------------
+# T9 mapping 
+# -------------------------
+T9_MAP = {
+    'a': '2', 'b': '2', 'c': '2',
+    'd': '3', 'e': '3', 'f': '3',
+    'g': '4', 'h': '4', 'i': '4',
+    'j': '5', 'k': '5', 'l': '5',
+    'm': '6', 'n': '6', 'o': '6',
+    'p': '7', 'q': '7', 'r': '7', 's': '7',
+    't': '8', 'u': '8', 'v': '8',
+    'w': '9', 'x': '9', 'y': '9', 'z': '9'
+}
+
+    # multi-press mapping (e.g. a=2, b=22, c=222)
+T9_MULTI_MAP = {
+    'a': '2', 'b': '22', 'c': '222',
+    'd': '3', 'e': '33', 'f': '333',
+    'g': '4', 'h': '44', 'i': '444',
+    'j': '5', 'k': '55', 'l': '555',
+    'm': '6', 'n': '66', 'o': '666',
+    'p': '7', 'q': '77', 'r': '777', 's': '7777',
+    't': '8', 'u': '88', 'v': '888',
+    'w': '9', 'x': '99', 'y': '999', 'z': '9999',
+}
+
+def string_to_t9(s: str) -> str:
+    """
+    Convert letters to old phone keypad digits
+    """
+    if not s:
+        return ""
+    s = ''.join(ch for ch in s.lower() if ch.isalpha())
+    return ''.join(T9_MAP.get(ch, '') for ch in s)
+
+
+def string_to_t9_multi(s: str) -> str:
+    """
+    Convert letters to multi-press keypad representation (repeat digits per letter).
+    """
+    if not s:
+        return ""
+    s = ''.join(ch for ch in s.lower() if ch.isalpha())
+    return ''.join(T9_MULTI_MAP.get(ch, '') for ch in s)
+
 # -------------------------
 # Toggle case of individual words
 # -------------------------
@@ -502,9 +548,7 @@ def generate_wordlist(profile):
 
     return filtered, len(filtered)
 
-# -------------------------
-# TODO: PIN list
-# -------------------------
+
 def generate_pinlist(profile, length=4):
     """
     Generate PIN list based on dates in the profile.
@@ -547,6 +591,44 @@ def generate_pinlist(profile, length=4):
     # filter for requested length
     generated = [p for p in sorted(pins) if len(p) == int(length)]
 
+    # T9-generated pins from names/keywords/etc. (old mobile keypad)
+    t9_single = set()
+    t9_multi = set()
+
+    def add_t9_variants(s):
+        if not s:
+            return
+        from magicguess.utils import sanitize_word
+        cleaned = sanitize_word(s)
+        if not cleaned:
+            return
+        single = string_to_t9(cleaned)
+        multi = string_to_t9_multi(cleaned)
+        if single and len(single) == int(length) and single.isdigit():
+            t9_single.add(single)
+        if multi and len(multi) == int(length) and multi.isdigit():
+            t9_multi.add(multi)
+
+    # collect candidates
+    add_t9_variants(profile.name)
+    for kw in profile.keywords:
+        add_t9_variants(kw)
+    for em in profile.emails:
+        if em:
+            add_t9_variants(em.split("@")[0])
+    for rel in profile.relationships:
+        add_t9_variants(rel.get("name"))
+        add_t9_variants(rel.get("nickname"))
+    for child in profile.children:
+        add_t9_variants(child.get("name"))
+        add_t9_variants(child.get("nickname"))
+    for pet in profile.pets:
+        add_t9_variants(pet.get("name"))
+        add_t9_variants(pet.get("nickname"))
+
+    t9_single_sorted = sorted(t9_single)
+    t9_multi_sorted = sorted(t9_multi)
+
     # Load base Markov PIN file and prioritize generated pins
     base_file = Path(__file__).parent / f"PIN{length}_markov.txt"
     base_list = []
@@ -563,7 +645,6 @@ def generate_pinlist(profile, length=4):
                 encoding = "utf-16-be"
 
             if not encoding:
-                # try utf-8 first, then fallback to latin-1
                 try:
                     text = raw.decode("utf-8")
                     encoding = "utf-8"
@@ -583,26 +664,69 @@ def generate_pinlist(profile, length=4):
             print(f"[!] Failed to read {base_file.name}: {e}")
             base_list = []
     else:
-        print(f"[!] Base PIN file not found: {base_file.name}. Using generated date-based PINs only.")
-        print("[!] To create a full PIN markov file yourself (recommended to keep the repo small), run:")
+        print(f"[!] Base PIN file not found: {base_file.name}.")
+        print("[!] You can create it yourself to keep the repo small. Example command:")
         print(f"    hashcat -a 3 {'?d'*int(length)} --stdout > {base_file.name}")
-        print("  Example for 7-digit PINs:")
-        print(f"    hashcat -a 3 ?d?d?d?d?d?d?d --stdout > {base_file.parent / ('PIN7_markov.txt')}")
+        # Ask the user whether to let MagicGuess create the file
+        resp = input(f"[?] Do you want MagicGuess to create {base_file.name} now? (y/N): ").strip().lower()
+        if resp in ("y", "yes"):
+            total = 10 ** int(length)
+            # warn for large files
+            WARN_LIMIT = 2_000_000
+            if total > WARN_LIMIT:
+                confirm = input(f"[!] This will create {total:,} lines (large file). Continue? (y/N): ").strip().lower()
+                if confirm not in ("y", "yes"):
+                    print("[!] Skipping automatic creation. Using generated date-based PINs only.")
+                    base_list = []
+                else:
+                    # create file by streaming
+                    print(f"[+] Creating {base_file.name} with {total:,} entries (this may take some time)...")
+                    with base_file.open("w", encoding="utf-8") as fh:
+                        for i in range(total):
+                            fh.write(str(i).zfill(int(length)) + "\n")
+                            if i > 0 and i % 1000000 == 0:
+                                print(f"  wrote {i:,} lines...")
+                    print(f"[+] Created {base_file.name}")
+                    # no shuffle option: created file left ordered
+                    # load base_list
+                    with base_file.open("r", encoding="utf-8") as fh:
+                        base_list = [ln.strip() for ln in fh if ln.strip()]
+            else:
+                # small-ish file: safe to create
+                print(f"[+] Creating {base_file.name} with {total:,} entries...")
+                with base_file.open("w", encoding="utf-8") as fh:
+                    for i in range(total):
+                        fh.write(str(i).zfill(int(length)) + "\n")
+                print(f"[+] Created {base_file.name}")
+                # created file left ordered 
+                with base_file.open("r", encoding="utf-8") as fh:
+                    base_list = [ln.strip() for ln in fh if ln.strip()]
+        else:
+            print("[!] Skipping base file creation. Using generated date-based PINs only.")
 
-    # Build final list: generated first, then remaining base entries not duplicated
+    # Build final list: 1) date-based generated, 2) T9-generated, 3) remaining base entries
     generated_set = set(generated)
+    t9_single_set = set(t9_single_sorted) if 't9_single_sorted' in locals() else set()
+    t9_multi_set = set(t9_multi_sorted) if 't9_multi_sorted' in locals() else set()
     final = []
-    # add generated (keep order as sorted)
+    # 1) add date-based generated (sorted)
     for p in generated:
         final.append(p)
-
-    # then add from base_list if not present
+    # 2) add T9-generated pins next
+    for p in t9_single_sorted:
+        if p not in generated_set:
+            final.append(p)
+    for p in t9_multi_sorted:
+        if p not in generated_set and p not in t9_single_set:
+            final.append(p)
+    # 3) then add from base_list if not present in prior sets
+    prior = set(final)
     for p in base_list:
         if not p.isdigit():
             continue
         if len(p) != int(length):
             continue
-        if p in generated_set:
+        if p in prior:
             continue
         final.append(p)
 
@@ -615,5 +739,5 @@ def generate_pinlist(profile, length=4):
         seen.add(p)
         final_unique.append(p)
 
-    print(f"[+] Generated {len(generated)} date-based PINs; final PINlist length: {len(final_unique)}")
+    print(f"[+] Generated {len(generated)} date-based PINs; T9(single) {len(t9_single_sorted)}; T9(multi) {len(t9_multi_sorted)}; final PINlist length: {len(final_unique)}")
     return final_unique, len(final_unique)
