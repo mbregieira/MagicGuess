@@ -5,8 +5,7 @@ from datetime import datetime
 import itertools
 
 SPECIAL_CHARS = ['!', '@', '#', '$', '%', '&', '*', '"']
-COMMON_NUMBERS = ["1", "12", "123", "1234", "69", "7", "17", "123456"]
-MIN_LENGTH = 6
+MIN_WORDLIST_LENGTH = 6
 
 # -------------------------
 # LEET MAPPING
@@ -20,7 +19,9 @@ LEET_MAP = {
 }
 
 def apply_leet(word):
-    """Applies simple substitutions, only 1 letter at a time, without explosion."""
+    """
+    Applies substitutions, only 1 letter at a time to without explosion.
+    """
     variants = set([word])
 
     for idx, ch in enumerate(word.lower()):
@@ -32,11 +33,13 @@ def apply_leet(word):
 
     return list(variants)
 
-
 # -------------------------
 # Toggle case of individual words
 # -------------------------
 def toggle_case(word):
+    """
+    Generate case toggles for a single word.
+    """
     return list(dedupe([
         word.lower(),
         word.capitalize(),
@@ -125,6 +128,13 @@ def name_variants(full_name: str):
 # Date variants
 # -------------------------
 def date_variants(d):
+    """
+    Generate date variants from a datetime object.
+    Formats:
+        - DDMMYYYY, MMDDYYYY
+        - DDMMYY, MMDDYY
+        - YYYY, YY
+    """
     if not d:
         return []
 
@@ -149,6 +159,10 @@ def date_variants(d):
 # Special characters
 # -------------------------
 def special_chars_variants(word):
+    """
+    Generate variants of a word with special characters
+    at the beginning, end, and both.
+    """
     variants = [word]
     for c in SPECIAL_CHARS:
         variants.append(c + word)
@@ -160,6 +174,11 @@ def special_chars_variants(word):
 # Common numbers
 # -------------------------
 def append_common_numbers(word):
+    # -------------------------------------------------------------------------
+    # ADD COMMON NUMBERS AS YOU WISH - BE CAREFUL WITH EXPLOSION --------------
+    COMMON_NUMBERS = ["1", "123", "1234", "69", "7", "17", "123456"]
+    # -------------------------------------------------------------------------
+
     return [word + n for n in COMMON_NUMBERS]
 
 # ---------------------------------------------------------
@@ -390,7 +409,7 @@ def _apply_final_transforms(words, profile):
     print(f"[+] After deduplication: {len(final_words)} unique items")
     filtered = []
     for w in final_words:
-        if len(w) < MIN_LENGTH:
+        if len(w) < MIN_WORDLIST_LENGTH:
             continue
         if w.isdigit():
             continue
@@ -486,12 +505,10 @@ def generate_wordlist(profile):
 # -------------------------
 # TODO: PIN list
 # -------------------------
-def generate_pinlist(profile):
+def generate_pinlist(profile, length=4):
     """
-    PIN list simples:
-    - Apenas datas do utilizador, relações e filhos
-    - Apenas formatos de 4 e 6 dígitos: DDMM, MMYY, DDMMYY, MMDDYY
-    - Nunca gerar só ano
+    Generate PIN list based on dates in the profile.
+        Returns the PIN list and its count.
     """
     pins = set()
 
