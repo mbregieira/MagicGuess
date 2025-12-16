@@ -1,5 +1,5 @@
 # cli.py
-from magicguess.core import MasterGuess, Relationship, Child, Pet, Email
+from magicguess.core import MasterGuess
 from magicguess.utils import validate_date, validate_email
 from magicguess.generators import generate_wordlist
 from magicguess.io_handlers import save_wordlist
@@ -7,10 +7,16 @@ from magicguess.io_handlers import save_wordlist
 from datetime import date as dt
 
 def ask_yes_no(prompt):
+    """
+    Ask a yes/no question via input() and return True for yes and False for no.
+    """
     answer = input(f"{prompt} (y/yes n/no): ").strip().lower()
     return answer in ["y", "yes"]
 
 def ask_date(prompt):
+    """
+    Ask for a date input in DD/MM/YYYY format. Returns a date object or None.
+    """
     while True:
         date_str = input(prompt).strip()
         if date_str == "":
@@ -105,9 +111,9 @@ def main_cli():
     if mg.generate_wordlist:
         mg.leet_enabled = ask_yes_no("Enable leet transformations?")
         mg.wordlist, mg.wordlist_count = generate_wordlist(mg)
-        filename = input("Save wordlist to filename (default: wordlist.txt): ").strip()
+        filename = input("[+] Save wordlist to filename (default: AwesomeWordlist.txt): ").strip()
         if not filename:
-            filename = "wordlist.txt"
+            filename = "AwesomeWordlist.txt"
         save_wordlist(mg.wordlist, filename)
 
     print(f"[+] Wordlist generated with {mg.wordlist_count} entries.")

@@ -1,6 +1,6 @@
 # core.py
 
-# Criar o objeto principal que vai ser a base para as combinações e posteriores transformações
+# Core data classes for MagicGuess
 
 from datetime import date
 

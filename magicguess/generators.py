@@ -298,203 +298,96 @@ def combine_pets(processed_pets):
 
 
 # -------------------------
-# Wordlist generation
+# Helper-driven Wordlist generation (refactored)
 # -------------------------
-def generate_wordlist(profile):
+
+def _collect_target_variants(profile):
+    return name_variants(profile.name) if profile.name else []
+
+
+def _collect_important_words(profile, normalized_name_variants):
     words = []
-
-    # Nomes do target
-    target_name_variants = name_variants(profile.name) if profile.name else []
-    words += target_name_variants
-
-    # Palavras importantes
     for kw in profile.keywords:
         if kw:
             words += toggle_case(sanitize_word(normalize_string(kw)))
-    words = dedupe(words)
+    # include normalized name variants as important words base
+    words = dedupe(words + normalized_name_variants)
+    return words
 
-    # Target and important dates
+
+def _collect_dates(profile):
     date_list = []
     if profile.birth:
         date_list += date_variants(profile.birth)
     for d in profile.important_dates:
         date_list += date_variants(d)
-    date_list = dedupe(date_list)
+    return dedupe(date_list)
 
-    important_words = words.copy()
-    target_last = sanitize_word(profile.name.strip().split()[-1]).lower() if profile.name else []
 
-    # ------------------- RELATIONS -------------------------
-    relation_words = []
-    processed_relations = []
-    for rel in profile.relationships:
-        processed, words_alone = process_person_for_combinations(rel, target_last, target_name_variants, date_list)
-        if not processed:
+def _process_people(list_of_people, target_last, target_name_variants, date_list):
+    words = []
+    processed = []
+    for person in list_of_people:
+        pproc, pwords = process_person_for_combinations(person, target_last, target_name_variants, date_list)
+        if not pproc:
             continue
-        processed_relations.append(processed)
-        relation_words += words_alone
-
-        for dt in processed["dates"]:
+        processed.append(pproc)
+        words += pwords
+        for dt in pproc.get("dates", []):
             date_list.append(dt)
+        # progress print per person
+        print(f"[+] Processed person: {person.get('name','(unnamed)')} — added {len(pwords)} words")
+    return processed, words
 
-        # Combos target <-> relation/nickname
-        for tn in target_name_variants:
-            for rv in processed["name_vars"]:
-                relation_words += [tn + rv, rv + tn]
-                for dt in date_list + processed["dates"]:
-                    relation_words += [tn + rv + dt, rv + tn + dt]
-            for nn in processed["nickname_vars"]:
-                relation_words += [tn + nn, nn + tn]
-                for dt in date_list + processed["dates"]:
-                    relation_words += [tn + nn + dt, nn + tn + dt]
 
-    # ------------------- CHILDREN -------------------------
-    children_words = []
-    processed_children = []
-    for child in profile.children:
-        processed, words_alone = process_person_for_combinations(child, target_last, target_name_variants, date_list)
-        if not processed:
+def _process_pets(pets, target_name_variants, date_list):
+    words = []
+    processed = []
+    for pet in pets:
+        pproc, pwords = process_pet_for_combinations(pet, target_name_variants, date_list)
+        if not pproc:
             continue
-        processed_children.append(processed)
-        children_words += words_alone
-
-        for dt in processed["dates"]:
+        processed.append(pproc)
+        words += pwords
+        for dt in pproc.get("dates", []):
             date_list.append(dt)
+        # progress print per pet
+        print(f"[+] Processed pet: {pet.get('name','(unnamed)')} — added {len(pwords)} words")
+    return processed, words
 
-        # Combos target <-> child/nickname
-        for tn in target_name_variants:
-            for cv in processed["name_vars"]:
-                children_words += [tn + cv, cv + tn]
-                for dt in date_list + processed["dates"]:
-                    children_words += [tn + cv + dt, cv + tn + dt]
-            for nn in processed["nickname_vars"]:
-                children_words += [tn + nn, nn + tn]
-                for dt in date_list + processed["dates"]:
-                    children_words += [tn + nn + dt, nn + tn + dt]
 
-    # Combos between children (without dates)
-    for c1, c2 in itertools.permutations(processed_children, 2):
-        for v1 in c1["name_vars"]:
-            for v2 in c2["name_vars"]:
-                children_words.append(v1 + v2)
-
-    words += relation_words + children_words
-
-    # ------------------- PETS -------------------------
-    pet_words = []
-    processed_pets = []
-
-    for pet in profile.pets:
-        processed, words_alone = process_pet_for_combinations(pet, target_name_variants, date_list)
-        if not processed:
-            continue
-        processed_pets.append(processed)
-        pet_words += words_alone
-
-        for dt in processed["dates"]:
-            date_list.append(dt)
-
-    date_list = dedupe(date_list)
-
-    pet_words += combine_pets(processed_pets)
-    # --- Variantes of pets with dates ---
-    for pet in processed_pets:
-        for nv in pet["name_vars"] + pet["nickname_vars"]:
-            for dt in pet["dates"]:
-                # adicionar nv + dt
-                pet_words.append(nv + dt)
-                # aplicar números comuns
-                for n in COMMON_NUMBERS:
-                    pet_words.append(nv + dt + n)
-                # aplicar caracteres especiais
-                for c in SPECIAL_CHARS:
-                    pet_words.append(nv + dt + c)
-                    pet_words.append(c + nv + dt)
-                    pet_words.append(c + nv + dt + c)
-
-    words += pet_words
-
-    # ------------------- IMPORTANT WORDS -------------------------
-
-    # -------------------------
-    # Combos target <-> important words
-    # -------------------------
-    important_combos = []
-    for w in important_words:
-        for tn in target_name_variants:
-            important_combos.append(tn + w)
-            important_combos.append(w + tn)
-
-    words += important_combos
-
-    # -------------------------
-    # Combos target <-> relationships
-    # -------------------------
-    relation_combos = []
-    for rel in processed_relations:
-        for tn in target_name_variants:
-            for rv in rel["name_vars"] + rel["nickname_vars"]:
-                relation_combos.append(tn + rv)
-                relation_combos.append(rv + tn)
-
-    words += relation_combos
-
-    # ------------------- IMPORTANT DATES -------------------------
-
-    all_entities = []
-
-    # Target
-    all_entities += target_name_variants
-
-    # Relations
-    for rel in processed_relations:
-        all_entities += rel["name_vars"] + rel["nickname_vars"]
-
-    # Children
-    for child in processed_children:
-        all_entities += child["name_vars"] + child["nickname_vars"]
-
-    # Pets
-    for pet in processed_pets:
-        all_entities += pet["name_vars"] + pet["nickname_vars"]
-
-    # Important words
-    all_entities += important_words
-
-    # Combinações entity <-> date
-    date_combos = []
+def _combine_entity_date_combos(all_entities, date_list):
+    combos = []
     for entity in all_entities:
         for dtv in date_list:
-            date_combos.append(entity + dtv)
-            date_combos.append(dtv + entity)
-
-    # Add to the wordlist
-    words += date_combos
+            combos.append(entity + dtv)
+            combos.append(dtv + entity)
+    return combos
 
 
-    # ------------------- COMMON NUMBERS -------------------------
-
-    for w in important_words:
+def _apply_final_transforms(words, profile):
+    # apply common numbers
+    for w in list(words):
         words += append_common_numbers(w)
+    print(f"[+] After appending common numbers: {len(words)} items")
 
-    # ------------------- SPECIAL CHARACTERS -------------------------
-
+    # special chars
     final_words = []
     for w in words:
         final_words += special_chars_variants(w)
+    print(f"[+] After applying special characters variants: {len(final_words)} items")
 
-    # ------------------- LEET MODE -------------------------
-
-    if profile.leet_enabled:
+    # leet
+    if getattr(profile, "leet_enabled", False):
         leet_words = []
         for w in final_words:
             leet_words += apply_leet(w)
         final_words += leet_words
+        print(f"[+] After applying leet transformations: {len(final_words)} items")
 
- 
-    # ------------------- DEDUPLICATION AND FILTERING -------------------------
-
+    # dedupe and filter
     final_words = dedupe(final_words)
+    print(f"[+] After deduplication: {len(final_words)} unique items")
     filtered = []
     for w in final_words:
         if len(w) < MIN_LENGTH:
@@ -506,6 +399,87 @@ def generate_wordlist(profile):
         if all_upper(w):
             continue
         filtered.append(w)
+
+    return filtered
+
+
+def generate_wordlist(profile):
+    print("[+] Starting wordlist generation...")
+    # target name variants
+    target_name_variants = _collect_target_variants(profile)
+    print(f"[+] Target name variants: {len(target_name_variants)}")
+
+    # important words (including name variants)
+    important_words = _collect_important_words(profile, target_name_variants)
+    print(f"[+] Important words base: {len(important_words)}")
+
+    # dates
+    date_list = _collect_dates(profile)
+    print(f"[+] Date variants collected: {len(date_list)}")
+
+    # keep a mutable date_list for downstream processors (they may append)
+    date_list = list(date_list)
+
+    # prepare target last name for person processing
+    target_last = sanitize_word(profile.name.strip().split()[-1]).lower() if profile.name else ""
+
+    # relations
+    processed_relations, relation_words = _process_people(profile.relationships, target_last, target_name_variants, date_list)
+    print(f"[+] Relations processed: {len(processed_relations)} — relation words {len(relation_words)}")
+
+    # children
+    processed_children, children_words = _process_people(profile.children, target_last, target_name_variants, date_list)
+    print(f"[+] Children processed: {len(processed_children)} — children words {len(children_words)}")
+    # combos between children (without dates)
+    for c1, c2 in itertools.permutations(processed_children, 2):
+        for v1 in c1.get("name_vars", []):
+            for v2 in c2.get("name_vars", []):
+                children_words.append(v1 + v2)
+
+    # pets
+    processed_pets, pet_words = _process_pets(profile.pets, target_name_variants, date_list)
+    print(f"[+] Pets processed: {len(processed_pets)} — pet words {len(pet_words)}")
+    pet_words += combine_pets(processed_pets)
+
+    # include initial target words
+    words = []
+    words += target_name_variants
+    words += important_words
+    words += relation_words
+    words += children_words
+    words += pet_words
+    print(f"[+] Accumulated words before combos/transforms: {len(words)}")
+
+    # combos: target <-> important words
+    for w in important_words:
+        for tn in target_name_variants:
+            words.append(tn + w)
+            words.append(w + tn)
+
+    # combos: target <-> relations
+    for rel in processed_relations:
+        for tn in target_name_variants:
+            for rv in rel.get("name_vars", []) + rel.get("nickname_vars", []):
+                words.append(tn + rv)
+                words.append(rv + tn)
+
+    # entity <-> date combos
+    all_entities = []
+    all_entities += target_name_variants
+    for rel in processed_relations:
+        all_entities += rel.get("name_vars", []) + rel.get("nickname_vars", [])
+    for child in processed_children:
+        all_entities += child.get("name_vars", []) + child.get("nickname_vars", [])
+    for pet in processed_pets:
+        all_entities += pet.get("name_vars", []) + pet.get("nickname_vars", [])
+    all_entities += important_words
+
+    words += _combine_entity_date_combos(all_entities, date_list)
+    print(f"[+] Added date combos: total words now {len(words)}")
+
+    # apply transformations and filtering
+    filtered = _apply_final_transforms(words, profile)
+    print(f"[+] Final filtered wordlist size: {len(filtered)}")
 
     return filtered, len(filtered)
 

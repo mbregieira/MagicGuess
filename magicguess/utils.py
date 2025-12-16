@@ -7,14 +7,19 @@ from datetime import datetime
 import re
 
 def clear_screen():
-    """Clear the screen"""
+    """
+    Clear the console screen.
+    """
     if platform.system().lower() == "windows":
         os.system("cls")
     else:
         os.system("clear")
 
 def dedupe(items):
-    """Remove duplicates preserving order."""
+    """
+    Remove duplicates from a list while preserving order.
+    Returns a list with duplicates removed.
+    """
     seen = set()
     clean = []
     for i in items:
@@ -25,7 +30,10 @@ def dedupe(items):
 
 # Validate if the guess is minimum length, if not, discard
 def validate_min_length(list, min_length):
-    """Validate minimum length of words in a list."""
+    """
+    Validate minimum length of words in a list.
+    Returns a list of words that meet the minimum length.
+    """
     valid = []
     for word in list:
         if len(word) >= min_length:
@@ -35,7 +43,10 @@ def validate_min_length(list, min_length):
 
 # Validate date in DD/MM/YYYY format
 def validate_date(date_str):
-    """Validate date in DD/MM/YYYY format."""
+    """
+    Validate date in DD/MM/YYYY format.
+    Returns True if valid, False otherwise.
+    """
     try:
         datetime.strptime(date_str, "%d/%m/%Y")
         return True
@@ -44,7 +55,10 @@ def validate_date(date_str):
 
 # Remove spaces, accents, and non-alphanumeric characters
 def sanitize_word(word):
-    """Remove spaces, accents, and non-alphanumeric characters from a word."""
+    """
+    Sanitize a word by removing spaces, accents, and non-alphanumeric characters.
+    Converts to lowercase.
+    """
     if not word:
         return ""
 
@@ -56,7 +70,9 @@ def sanitize_word(word):
 
 # Validate email as string + @ + string + . + string
 def validate_email(email):
-    """Validate email format."""
+    """
+    Validate email format: string + @ + string + . + string
+    """
     # 1. Check if the email contains exactly one '@' symbol
     if email.count('@') != 1:
         return False
