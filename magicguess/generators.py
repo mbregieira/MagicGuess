@@ -719,6 +719,35 @@ def generate_pinlist(profile, length=4):
     for p in t9_multi_sorted:
         if p not in generated_set and p not in t9_single_set:
             final.append(p)
+    # 2.5) add known/common PIN patterns (in this order: increasing, decreasing, repeated digits, special vertical column for 4-digit)
+    def _known_patterns(n):
+        n = int(n)
+        patterns = []
+        # increasing (1..n) if n <= 9, else use 0..9 cycling
+        if n <= 9:
+            inc = ''.join(str(i) for i in range(1, n+1))
+        else:
+            inc = ''.join(str(i % 10) for i in range(1, n+1))
+        patterns.append(inc)
+        # decreasing
+        patterns.append(inc[::-1])
+
+        # repeated digits 0..9 (e.g., 0000, 1111 ...)
+        for d in range(0, 10):
+            patterns.append(str(d) * n)
+
+        # special case: vertical middle column on phone keypad for 4-digit pins
+        if n == 4:
+            patterns.insert(0, '2580')
+            patterns.insert(1, '0852')
+
+        # keep only numeric and correct length
+        return [p for p in patterns if p.isdigit() and len(p) == n]
+
+    patterns = _known_patterns(length)
+    for p in patterns:
+        if p not in generated_set and p not in t9_single_set and p not in t9_multi_set:
+            final.append(p)
     # 3) then add from base_list if not present in prior sets
     prior = set(final)
     for p in base_list:
