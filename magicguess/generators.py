@@ -2,6 +2,7 @@
 
 from magicguess.utils import sanitize_word, dedupe, normalize_string, all_upper
 from datetime import datetime
+from pathlib import Path
 import itertools
 
 SPECIAL_CHARS = ['!', '@', '#', '$', '%', '&', '*', '"']
@@ -551,10 +552,9 @@ def generate_wordlist(profile):
 
 def generate_pinlist(profile, length=4):
     """
-    Generate PIN list based on dates in the profile.
+    Generate PIN list.
         Returns the PIN list and its count.
     """
-    from pathlib import Path
 
     def extract_pins_from_date(d):
         if not d:
@@ -591,7 +591,7 @@ def generate_pinlist(profile, length=4):
     # filter for requested length
     generated = [p for p in sorted(pins) if len(p) == int(length)]
 
-    # T9-generated pins from names/keywords/etc. (old mobile keypad)
+    # T9-generated pins from names/keywords/etc. 
     t9_single = set()
     t9_multi = set()
 
