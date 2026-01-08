@@ -1,3 +1,5 @@
+.gitignore
 *markov.txt
 AwesomePINlist.txt
 AwesomeWordlist.txt
+__pycache__/
