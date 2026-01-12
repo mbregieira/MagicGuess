@@ -21,7 +21,7 @@ LEET_MAP = {
 
 def apply_leet(word):
     """
-    Applies substitutions, only 1 letter at a time to without explosion.
+    Applies substitutions, only 1 letter at a time to avoid explosion.
     """
     variants = set([word])
 
@@ -49,7 +49,9 @@ T9_MAP = {
     'w': '9', 'x': '9', 'y': '9', 'z': '9'
 }
 
-    # multi-press mapping (e.g. a=2, b=22, c=222)
+# -------------------------
+# T9 multi-press mapping (e.g. a=2, b=22, c=222)
+# -------------------------
 T9_MULTI_MAP = {
     'a': '2', 'b': '22', 'c': '222',
     'd': '3', 'e': '33', 'f': '333',
@@ -222,7 +224,7 @@ def special_chars_variants(word):
 # -------------------------
 def append_common_numbers(word):
     # -------------------------------------------------------------------------
-    # ADD RANDOM NUMBERS ------------------------------------------------------
+    # ADD RANDOM NUMBERS                                           
     COMMON_NUMBERS = ["1", "123", "1234", "69", "7", "17", "123456"]
     # -------------------------------------------------------------------------
 
@@ -364,7 +366,7 @@ def combine_pets(processed_pets):
 
 
 # -------------------------
-# Helper-driven Wordlist generation (refactored)
+# Helper-driven Wordlist generation
 # -------------------------
 
 def _collect_target_variants(profile):

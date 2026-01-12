@@ -1,3 +1,4 @@
+# banner.py
 # Banner for MagicGuess
 def get_banner():
     """
