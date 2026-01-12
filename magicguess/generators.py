@@ -222,7 +222,7 @@ def special_chars_variants(word):
 # -------------------------
 def append_common_numbers(word):
     # -------------------------------------------------------------------------
-    # ADD COMMON NUMBERS AS YOU WISH - BE CAREFUL WITH EXPLOSION --------------
+    # ADD RANDOM NUMBERS ------------------------------------------------------
     COMMON_NUMBERS = ["1", "123", "1234", "69", "7", "17", "123456"]
     # -------------------------------------------------------------------------
 
@@ -740,6 +740,15 @@ def generate_pinlist(profile, length=4):
         if n == 4:
             patterns.insert(0, '2580')
             patterns.insert(1, '0852')
+        if n == 6:
+            patterns.insert(0, '123654')
+            patterns.insert(1, '456321')
+            patterns.insert(2, '456987')
+            patterns.insert(3, '789654')
+            patterns.insert(4, '147258')
+            patterns.insert(5, '852741')
+            patterns.insert(6, '369258')
+            patterns.insert(7, '258963')
 
         # keep only numeric and correct length
         return [p for p in patterns if p.isdigit() and len(p) == n]
