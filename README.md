@@ -1,4 +1,4 @@
-# Wordlist Generator
+# Wordlist && PINlist Generator
 
 An **profile-based wordlist generator** designed for **digital forensics** and **penetration testing**.
 The tool focuses on **high-value, realistic passwords** while actively preventing unnecessary combinatorial explosion.
