@@ -141,16 +141,11 @@ Purpose
 
 This tool is designed to generate wordlists that are ideal for:
 
-DFIR professionals
-
-Law enforcement investigations
-
-Penetration testers
-
-Red teams
-
-Password policy audits
+1. DFIR professionals
+2. Law enforcement investigations
+3. Penetration testers
+4. Red teams
+5. Password policy audits
 
 License
-
 Educational and professional use is permitted only in legal and authorized contexts.
