@@ -552,232 +552,360 @@ def generate_wordlist(profile):
     return filtered, len(filtered)
 
 
-def generate_pinlist(profile, length=4):
-    """
-    Generate PIN list.
-        Returns the PIN list and its count.
-    """
+def _extract_pins_from_date(d):
+    """Extract PIN variants from a date object."""
+    if not d:
+        return []
+    
+    day = f"{d.day:02d}"
+    month = f"{d.month:02d}"
+    year = str(d.year)
+    year_short = year[-2:]
+    
+    variants = []
+    
+    # Priority 1: Day + Month (European format)
+    variants.append(day + month)
+    variants.append(day + month + year_short)
+    variants.append(day + month + year)
+    
+    # Priority 2: Month + Day (American format)
+    variants.append(month + day)
+    variants.append(month + day + year_short)
+    variants.append(month + day + year)
+    
+    # Priority 3: Combinations with year
+    variants.append(day + year_short)
+    variants.append(month + year_short)
+    
+    # Priority 4: Year alone
+    variants.append(year)
+    variants.append(year_short)
+    
+    # Returns only valid digits, preserving order and removing duplicates
+    seen = set()
+    result = []
+    for v in variants:
+        if v.isdigit() and v not in seen:
+            seen.add(v)
+            result.append(v)
+    
+    return result
 
-    def extract_pins_from_date(d):
-        if not d:
-            return set()
-
-        day = f"{d.day:02d}"
-        month = f"{d.month:02d}"
-        year = str(d.year)
-        year_short = year[-2:]
-
-        variants = set()
-        # basic combos
-        variants.update({day + month, month + day, month + year_short, day + year_short})
-        variants.update({day + month + year_short, month + day + year_short, day + month + year, month + day + year})
-        variants.update({year, year_short})
-        return {v for v in variants if v.isdigit()}
-
-    # collect date-based pins
-    pins = set()
+def _collect_date_based_pins(profile, length):
+    """Collect all date-based PINs from profile, preserving priority order."""
+    pins = []
+    seen = set()
+    
+    # Helper to add pins maintaining order and avoiding duplicates
+    def add_pins(date_obj):
+        for pin in _extract_pins_from_date(date_obj):
+            if len(pin) == int(length) and pin not in seen:
+                pins.append(pin)
+                seen.add(pin)
+    
+    # Priority 1: Target's birth date
     if profile.birth:
-        pins.update(extract_pins_from_date(profile.birth))
+        add_pins(profile.birth)
+    
+    # Priority 2: Important dates
     for d in profile.important_dates:
-        pins.update(extract_pins_from_date(d))
+        add_pins(d)
+    
+    # Priority 3: Relationships' birth dates
     for rel in profile.relationships:
         if rel.get("birth"):
-            pins.update(extract_pins_from_date(rel["birth"]))
+            add_pins(rel["birth"])
+    
+    # Priority 4: Children's birth dates
     for child in profile.children:
         if child.get("birth"):
-            pins.update(extract_pins_from_date(child["birth"]))
+            add_pins(child["birth"])
+    
+    # Priority 5: Pets' birth dates
     for pet in profile.pets:
         if pet.get("birth"):
-            pins.update(extract_pins_from_date(pet["birth"]))
+            add_pins(pet["birth"])
+    
+    return pins
 
-    # filter for requested length
-    generated = [p for p in sorted(pins) if len(p) == int(length)]
 
-    # T9-generated pins from names/keywords/etc. 
+def _add_t9_variants(s, length, t9_single, t9_multi):
+    """Add T9 variants from a string to the given sets."""
+    if not s:
+        return
+    from magicguess.utils import sanitize_word
+    
+    cleaned = sanitize_word(s)
+    if not cleaned:
+        return
+    
+    single = string_to_t9(cleaned)
+    multi = string_to_t9_multi(cleaned)
+    
+    if single and len(single) == int(length) and single.isdigit():
+        t9_single.add(single)
+    if multi and len(multi) == int(length) and multi.isdigit():
+        t9_multi.add(multi)
+
+def _collect_t9_pins(profile, length):
+    """Collect T9-generated PINs from profile names and keywords."""
     t9_single = set()
     t9_multi = set()
-
-    def add_t9_variants(s):
-        if not s:
-            return
-        from magicguess.utils import sanitize_word
-        cleaned = sanitize_word(s)
-        if not cleaned:
-            return
-        single = string_to_t9(cleaned)
-        multi = string_to_t9_multi(cleaned)
-        if single and len(single) == int(length) and single.isdigit():
-            t9_single.add(single)
-        if multi and len(multi) == int(length) and multi.isdigit():
-            t9_multi.add(multi)
-
-    # collect candidates
-    add_t9_variants(profile.name)
+    
+    _add_t9_variants(profile.name, length, t9_single, t9_multi)
+    
     for kw in profile.keywords:
-        add_t9_variants(kw)
+        _add_t9_variants(kw, length, t9_single, t9_multi)
+    
     for em in profile.emails:
         if em:
-            add_t9_variants(em.split("@")[0])
+            _add_t9_variants(em.split("@")[0], length, t9_single, t9_multi)
+    
     for rel in profile.relationships:
-        add_t9_variants(rel.get("name"))
-        add_t9_variants(rel.get("nickname"))
+        _add_t9_variants(rel.get("name"), length, t9_single, t9_multi)
+        _add_t9_variants(rel.get("nickname"), length, t9_single, t9_multi)
+    
     for child in profile.children:
-        add_t9_variants(child.get("name"))
-        add_t9_variants(child.get("nickname"))
+        _add_t9_variants(child.get("name"), length, t9_single, t9_multi)
+        _add_t9_variants(child.get("nickname"), length, t9_single, t9_multi)
+    
     for pet in profile.pets:
-        add_t9_variants(pet.get("name"))
-        add_t9_variants(pet.get("nickname"))
+        _add_t9_variants(pet.get("name"), length, t9_single, t9_multi)
+        _add_t9_variants(pet.get("nickname"), length, t9_single, t9_multi)
+    
+    return sorted(t9_single), sorted(t9_multi)
 
-    t9_single_sorted = sorted(t9_single)
-    t9_multi_sorted = sorted(t9_multi)
+def _extract_numeric_sequences(s, length):
+    """Extract all numeric sequences of specified length from a string."""
+    if not s:
+        return []
+    
+    import re
+    # Find all sequences of digits
+    numbers = re.findall(r'\d+', s)
+    
+    sequences = []
+    for num in numbers:
+        # If exact length match
+        if len(num) == int(length):
+            sequences.append(num)
+        # If longer, extract all possible substrings of desired length
+        elif len(num) > int(length):
+            for i in range(len(num) - int(length) + 1):
+                sequences.append(num[i:i+int(length)])
+    
+    return sequences
 
-    # Load base Markov PIN file and prioritize generated pins
-    base_file = Path(__file__).parent / f"PIN{length}_markov.txt"
-    base_list = []
-    if base_file.exists():
-        try:
-            raw = base_file.read_bytes()
-            encoding = None
-            # detect BOMs
-            if raw.startswith(b"\xef\xbb\xbf"):
-                encoding = "utf-8-sig"
-            elif raw.startswith(b"\xff\xfe"):
-                encoding = "utf-16"
-            elif raw.startswith(b"\xfe\xff"):
-                encoding = "utf-16-be"
-
-            if not encoding:
-                try:
-                    text = raw.decode("utf-8")
-                    encoding = "utf-8"
-                except Exception:
-                    try:
-                        text = raw.decode("utf-16")
-                        encoding = "utf-16"
-                    except Exception:
-                        text = raw.decode("latin-1")
-                        encoding = "latin-1"
-            else:
-                text = raw.decode(encoding)
-
-            base_list = [ln.strip() for ln in text.splitlines() if ln.strip()]
-            print(f"[+] Loaded base PIN list from {base_file.name} ({len(base_list)} entries) using encoding {encoding}")
-        except Exception as e:
-            print(f"[!] Failed to read {base_file.name}: {e}")
-            base_list = []
-    else:
-        print(f"[!] Base PIN file not found: {base_file.name}.")
-        print("[!] You can create it yourself to keep the repo small. Example command:")
-        print(f"    hashcat -a 3 {'?d'*int(length)} --stdout > {base_file.name}")
-        # Ask the user whether to let MagicGuess create the file
-        resp = input(f"[?] Do you want MagicGuess to create {base_file.name} now? (y/N): ").strip().lower()
-        if resp in ("y", "yes"):
-            total = 10 ** int(length)
-            # warn for large files
-            WARN_LIMIT = 2_000_000
-            if total > WARN_LIMIT:
-                confirm = input(f"[!] This will create {total:,} lines (large file). Continue? (y/N): ").strip().lower()
-                if confirm not in ("y", "yes"):
-                    print("[!] Skipping automatic creation. Using generated date-based PINs only.")
-                    base_list = []
-                else:
-                    # create file by streaming
-                    print(f"[+] Creating {base_file.name} with {total:,} entries (this may take some time)...")
-                    with base_file.open("w", encoding="utf-8") as fh:
-                        for i in range(total):
-                            fh.write(str(i).zfill(int(length)) + "\n")
-                            if i > 0 and i % 1000000 == 0:
-                                print(f"  wrote {i:,} lines...")
-                    print(f"[+] Created {base_file.name}")
-                    # no shuffle option: created file left ordered
-                    # load base_list
-                    with base_file.open("r", encoding="utf-8") as fh:
-                        base_list = [ln.strip() for ln in fh if ln.strip()]
-            else:
-                # small-ish file: safe to create
-                print(f"[+] Creating {base_file.name} with {total:,} entries...")
-                with base_file.open("w", encoding="utf-8") as fh:
-                    for i in range(total):
-                        fh.write(str(i).zfill(int(length)) + "\n")
-                print(f"[+] Created {base_file.name}")
-                # created file left ordered 
-                with base_file.open("r", encoding="utf-8") as fh:
-                    base_list = [ln.strip() for ln in fh if ln.strip()]
-        else:
-            print("[!] Skipping base file creation. Using generated date-based PINs only.")
-
-    # Build final list: 1) date-based generated, 2) T9-generated, 3) remaining base entries
-    generated_set = set(generated)
-    t9_single_set = set(t9_single_sorted) if 't9_single_sorted' in locals() else set()
-    t9_multi_set = set(t9_multi_sorted) if 't9_multi_sorted' in locals() else set()
-    final = []
-    # 1) add date-based generated (sorted)
-    for p in generated:
-        final.append(p)
-    # 2) add T9-generated pins next
-    for p in t9_single_sorted:
-        if p not in generated_set:
-            final.append(p)
-    for p in t9_multi_sorted:
-        if p not in generated_set and p not in t9_single_set:
-            final.append(p)
-    # 2.5) add known/common PIN patterns (in this order: increasing, decreasing, repeated digits, special vertical column for 4-digit)
-    def _known_patterns(n):
-        n = int(n)
-        patterns = []
-        # increasing (1..n) if n <= 9, else use 0..9 cycling
-        if n <= 9:
-            inc = ''.join(str(i) for i in range(1, n+1))
-        else:
-            inc = ''.join(str(i % 10) for i in range(1, n+1))
-        patterns.append(inc)
-        # decreasing
-        patterns.append(inc[::-1])
-
-        # repeated digits 0..9 (e.g., 0000, 1111 ...)
-        for d in range(0, 10):
-            patterns.append(str(d) * n)
-
-        # special case: vertical middle column on phone keypad for 4-digit pins
-        if n == 4:
-            patterns.insert(0, '2580')
-            patterns.insert(1, '0852')
-        if n == 6:
-            patterns.insert(0, '123654')
-            patterns.insert(1, '456321')
-            patterns.insert(2, '456987')
-            patterns.insert(3, '789654')
-            patterns.insert(4, '147258')
-            patterns.insert(5, '852741')
-            patterns.insert(6, '369258')
-            patterns.insert(7, '258963')
-
-        # keep only numeric and correct length
-        return [p for p in patterns if p.isdigit() and len(p) == n]
-
-    patterns = _known_patterns(length)
-    for p in patterns:
-        if p not in generated_set and p not in t9_single_set and p not in t9_multi_set:
-            final.append(p)
-    # 3) then add from base_list if not present in prior sets
-    prior = set(final)
-    for p in base_list:
-        if not p.isdigit():
-            continue
-        if len(p) != int(length):
-            continue
-        if p in prior:
-            continue
-        final.append(p)
-
-    # ensure uniqueness
-    final_unique = []
+def _collect_numeric_pins(profile, length):
+    """Collect numeric sequences from emails, keywords, and usernames."""
+    numeric_pins = []
     seen = set()
-    for p in final:
-        if p in seen:
-            continue
-        seen.add(p)
-        final_unique.append(p)
+    
+    # Extract from emails (both full email and username part)
+    for em in profile.emails:
+        if em:
+            # Full email
+            for pin in _extract_numeric_sequences(em, length):
+                if pin not in seen:
+                    numeric_pins.append(pin)
+                    seen.add(pin)
+            # Username part (before @)
+            username = em.split("@")[0]
+            for pin in _extract_numeric_sequences(username, length):
+                if pin not in seen:
+                    numeric_pins.append(pin)
+                    seen.add(pin)
+    
+    # Extract from keywords
+    for kw in profile.keywords:
+        if kw:
+            for pin in _extract_numeric_sequences(kw, length):
+                if pin not in seen:
+                    numeric_pins.append(pin)
+                    seen.add(pin)
+    
+    # Extract from name (usernames often contain birth year, etc.)
+    if profile.name:
+        for pin in _extract_numeric_sequences(profile.name, length):
+            if pin not in seen:
+                numeric_pins.append(pin)
+                seen.add(pin)
+    
+    return numeric_pins
 
-    print(f"[+] Generated {len(generated)} date-based PINs; T9(single) {len(t9_single_sorted)}; T9(multi) {len(t9_multi_sorted)}; final PINlist length: {len(final_unique)}")
-    return final_unique, len(final_unique)
+def _known_patterns(length):
+    """Generate common/known PIN patterns."""
+    n = int(length)
+    patterns = []
+    
+    # Increasing sequence
+    if n <= 9:
+        inc = ''.join(str(i) for i in range(1, n+1))
+    else:
+        inc = ''.join(str(i % 10) for i in range(1, n+1))
+    patterns.append(inc)
+    
+    # Decreasing sequence
+    patterns.append(inc[::-1])
+    
+    # Repeated digits
+    for d in range(10):
+        patterns.append(str(d) * n)
+    
+    # Special patterns for 4-digit PINs
+    if n == 4:
+        patterns.insert(0, '2580')
+        patterns.insert(1, '0852')
+    
+    # Special patterns for 6-digit PINs
+    if n == 6:
+        patterns.extend(['123654', '456321', '456987', '789654', 
+                        '147258', '852741', '369258', '258963'])
+    
+    return [p for p in patterns if p.isdigit() and len(p) == n]
+
+
+def _load_base_pin_file(base_file, length):
+    """Load or create base PIN file."""
+    if base_file.exists():
+        return _read_base_file(base_file)
+    
+    print(f"[!] Base PIN file not found: {base_file.name}.")
+    print("[!] You can create it yourself. Example command:")
+    print(f"    hashcat -a 3 {'?d'*int(length)} --stdout > {base_file.name}")
+    
+    resp = input(f"[?] Do you want MagicGuess to create {base_file.name} now? (y/N): ").strip().lower()
+    if resp not in ("y", "yes"):
+        print("[!] Skipping base file creation. Using generated PINs only.")
+        return []
+    
+    return _create_base_file(base_file, length)
+
+
+def _read_base_file(base_file):
+    """Read existing base PIN file with encoding detection."""
+    try:
+        raw = base_file.read_bytes()
+        encoding = _detect_encoding(raw)
+        text = raw.decode(encoding)
+        base_list = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        print(f"[+] Loaded base PIN list from {base_file.name} ({len(base_list)} entries) using encoding {encoding}")
+        return base_list
+    except Exception as e:
+        print(f"[!] Failed to read {base_file.name}: {e}")
+        return []
+
+
+def _detect_encoding(raw):
+    """Detect file encoding from BOM or by trying common encodings."""
+    if raw.startswith(b"\xef\xbb\xbf"):
+        return "utf-8-sig"
+    elif raw.startswith(b"\xff\xfe"):
+        return "utf-16"
+    elif raw.startswith(b"\xfe\xff"):
+        return "utf-16-be"
+    
+    for encoding in ["utf-8", "utf-16", "latin-1"]:
+        try:
+            raw.decode(encoding)
+            return encoding
+        except Exception:
+            continue
+    return "latin-1"
+
+
+def _create_base_file(base_file, length):
+    """Create new base PIN file."""
+    total = 10 ** int(length)
+    WARN_LIMIT = 2_000_000
+    
+    if total > WARN_LIMIT:
+        confirm = input(f"[!] This will create {total:,} lines (large file). Continue? (y/N): ").strip().lower()
+        if confirm not in ("y", "yes"):
+            print("[!] Skipping automatic creation. Using generated PINs only.")
+            return []
+    
+    print(f"[+] Creating {base_file.name} with {total:,} entries...")
+    with base_file.open("w", encoding="utf-8") as fh:
+        for i in range(total):
+            fh.write(str(i).zfill(int(length)) + "\n")
+            if i > 0 and i % 1000000 == 0:
+                print(f"  wrote {i:,} lines...")
+    
+    print(f"[+] Created {base_file.name}")
+    with base_file.open("r", encoding="utf-8") as fh:
+        return [ln.strip() for ln in fh if ln.strip()]
+
+
+def _build_final_pinlist(date_pins, numeric_pins, t9_single, t9_multi, base_list, length):
+    """Build final PIN list with priority ordering."""
+    final = []
+    seen = set()
+    
+    # 1. Date-based PINs (highest priority)
+    for p in date_pins:
+        if p not in seen:
+            final.append(p)
+            seen.add(p)
+    
+    # 2. Numeric sequences from emails/keywords
+    for p in numeric_pins:
+        if p not in seen:
+            final.append(p)
+            seen.add(p)
+    
+    # 3. T9 single-press PINs
+    for p in t9_single:
+        if p not in seen:
+            final.append(p)
+            seen.add(p)
+    
+    # 4. T9 multi-press PINs
+    for p in t9_multi:
+        if p not in seen:
+            final.append(p)
+            seen.add(p)
+    
+    # 5. Known patterns
+    for p in _known_patterns(length):
+        if p not in seen:
+            final.append(p)
+            seen.add(p)
+    
+    # 6. Base list entries
+    for p in base_list:
+        if p.isdigit() and len(p) == int(length) and p not in seen:
+            final.append(p)
+            seen.add(p)
+    
+    return final
+
+
+def generate_pinlist(profile, length=4):
+    """
+    Generate PIN list from profile information.
+    Returns the PIN list and its count.
+    """
+    # Collect date-based PINs
+    date_pins = _collect_date_based_pins(profile, length)
+    
+    # Collect numeric sequences from emails/keywords
+    numeric_pins = _collect_numeric_pins(profile, length)
+    
+    # Collect T9-generated PINs
+    t9_single, t9_multi = _collect_t9_pins(profile, length)
+    
+    # Load or create base PIN file
+    base_file = Path(__file__).parent / f"PIN{length}_markov.txt"
+    base_list = _load_base_pin_file(base_file, length)
+    
+    # Build final list with priority
+    final = _build_final_pinlist(date_pins, numeric_pins, t9_single, t9_multi, base_list, length)
+    
+    print(f"[+] Generated {len(date_pins)} date-based PINs; "
+          f"{len(numeric_pins)} numeric sequences; "
+          f"T9(single) {len(t9_single)}; T9(multi) {len(t9_multi)}; "
+          f"final PINlist length: {len(final)}")
+    
+    return final, len(final)
