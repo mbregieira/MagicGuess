@@ -1,7 +1,7 @@
 # MagicGuess - Wordlist & PINlist Generator
 
 A **profile-based wordlist and PINlist generator** designed for **digital forensics** and **penetration testing**.  
-The tool focuses on **high-value, realistic passwords and PINs** while actively preventing unnecessary combinatorial explosion.
+The tool focuses on **high-value, realistic passwords and PINs** commonly encountered in real-world engagements.
 
 ---
 
