@@ -256,11 +256,4 @@ Contributions are welcome!
 
 ---
 
-## Version
-
-**Current Version:** 1.0  
-**Last Updated:** January 2026
-
----
-
 **Remember:** With great power comes great responsibility. Use MagicGuess ethically and legally.
