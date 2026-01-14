@@ -116,7 +116,7 @@ mbregieira846884@hotmail.com
    - European format (`DDMM`) prioritized over American (`MMDD`)
 
 2. ** Numeric sequences from emails/keywords**
-   - Extracted from emails: `user513551@domain.com` → `513551`
+   - Extracted from emails: `user846884@domain.com` → `846884`
    - Extracted from keywords with numbers
    - All possible substrings of desired length
 
