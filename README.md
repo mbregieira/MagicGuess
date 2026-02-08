@@ -40,6 +40,7 @@ Each category can generate passwords **independently** or in **controlled combin
 - `DDMMYY` / `MMDDYY` (short year)
 - `DDMM` / `MMDD` (no year)
 - `YYYY` / `YY` (year only)
+-  `DMYY` & `DMYYYY`
 
 **Priority ordering:**
 - European format (`DDMM`) prioritized first
