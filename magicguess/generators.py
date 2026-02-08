@@ -557,26 +557,40 @@ def _extract_pins_from_date(d):
     if not d:
         return []
     
-    day = f"{d.day:02d}"
-    month = f"{d.month:02d}"
+    day_padded = f"{d.day:02d}"
+    month_padded = f"{d.month:02d}"
+    day_single = str(d.day)
+    month_single = str(d.month)
     year = str(d.year)
     year_short = year[-2:]
     
     variants = []
     
-    # Priority 1: Day + Month (European format)
-    variants.append(day + month)
-    variants.append(day + month + year_short)
-    variants.append(day + month + year)
+    # Priority 1: Day + Month (European format) - both padded and single digit
+    variants.append(day_padded + month_padded)
+    variants.append(day_single + month_single)
+    variants.append(day_padded + month_padded + year_short)
+    variants.append(day_single + month_single + year_short)
+    variants.append(day_padded + month_padded + year)
+    variants.append(day_single + month_single + year)
     
-    # Priority 2: Month + Day (American format)
-    variants.append(month + day)
-    variants.append(month + day + year_short)
-    variants.append(month + day + year)
+    # Priority 2: Month + Day (American format) - both padded and single digit
+    variants.append(month_padded + day_padded)
+    variants.append(month_single + day_single)
+    variants.append(month_padded + day_padded + year_short)
+    variants.append(month_single + day_single + year_short)
+    variants.append(month_padded + day_padded + year)
+    variants.append(month_single + day_single + year)
     
-    # Priority 3: Combinations with year
-    variants.append(day + year_short)
-    variants.append(month + year_short)
+    # Priority 3: Combinations with year - both formats
+    variants.append(day_padded + year_short)
+    variants.append(day_single + year_short)
+    variants.append(month_padded + year_short)
+    variants.append(month_single + year_short)
+    variants.append(day_padded + year)
+    variants.append(day_single + year)
+    variants.append(month_padded + year)
+    variants.append(month_single + year)
     
     # Priority 4: Year alone
     variants.append(year)
