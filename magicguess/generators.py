@@ -4,6 +4,7 @@ from magicguess.utils import sanitize_word, dedupe, normalize_string, all_upper
 from datetime import datetime
 from pathlib import Path
 import itertools
+import re
 
 SPECIAL_CHARS = ['!', '@', '#', '$', '%', '&', '*', '"']
 MIN_WORDLIST_LENGTH = 6
@@ -83,94 +84,239 @@ def string_to_t9_multi(s: str) -> str:
     return ''.join(T9_MULTI_MAP.get(ch, '') for ch in s)
 
 # -------------------------
-# Toggle case of individual words
+# Hyphenated name handling
+# -------------------------
+def sanitize_name_preserve_hyphen(name: str):
+    """
+    Sanitize a name while preserving hyphens (for hyphenated names).
+    Only removes special characters except hyphens.
+    """
+    if not name:
+        return ""
+    # Remove special chars but keep letters, hyphens, and spaces
+    cleaned = re.sub(r'[^a-zA-Z\-\s]', '', name)
+    return cleaned.strip()
+
+def split_hyphenated_name(name: str):
+    """
+    Split hyphenated names and return both with and without hyphen.
+    
+    Examples:
+        "Paul-Philipp" -> ["Paul-Philipp", "Paul", "Philipp"]
+        "Smith-Johnson" -> ["Smith-Johnson", "Smith", "Johnson"]
+        "Normal" -> ["Normal"]
+    
+    Returns list of sanitized name parts.
+    """
+    if not name:
+        return []
+    
+    if '-' in name:
+        # Keep the hyphenated version
+        full_hyphenated = sanitize_name_preserve_hyphen(name)
+        # Also get the parts without hyphen
+        parts = [sanitize_word(p) for p in name.split('-') if p.strip()]
+        
+        # Return: hyphenated version + individual parts
+        result = [full_hyphenated] + parts
+        return [r for r in result if r]
+    else:
+        # No hyphen - use regular sanitize
+        sanitized = sanitize_word(name)
+        return [sanitized] if sanitized else []
+
+
+def parse_name_components(full_name: str):
+    """
+    Parse a full name into components.
+    
+    Returns a dict with:
+        - 'first_names': list of first name variants (with hyphen + split parts)
+        - 'middle_names': list of middle name variants
+        - 'last_names': list of last name variants (with hyphen + split parts)
+        - 'all_parts': flat list of all individual parts including hyphenated versions
+    """
+    if not full_name:
+        return {'first_names': [], 'middle_names': [], 'last_names': [], 'all_parts': []}
+    
+    parts_raw = [p for p in full_name.strip().split() if p]
+    
+    if not parts_raw:
+        return {'first_names': [], 'middle_names': [], 'last_names': [], 'all_parts': []}
+    
+    # Process first name 
+    first_variants = split_hyphenated_name(parts_raw[0])
+    
+    # Process last name
+    last_variants = split_hyphenated_name(parts_raw[-1]) if len(parts_raw) > 1 else []
+    
+    # Process middle names (if any)
+    middle_variants = []
+    if len(parts_raw) > 2:
+        for middle in parts_raw[1:-1]:
+            middle_variants.extend(split_hyphenated_name(middle))
+    
+    # Collect all individual parts
+    all_parts = first_variants + middle_variants + last_variants
+    
+    return {
+        'first_names': first_variants,
+        'middle_names': middle_variants,
+        'last_names': last_variants,
+        'all_parts': dedupe(all_parts)
+    }
+
+
+# -------------------------
+# Toggle case
 # -------------------------
 def toggle_case(word):
     """
-    Generate case toggles for a single word.
+    Generate case variants.
     """
-    return list(dedupe([
+    if not word:
+        return []
+    
+    return dedupe([
         word.lower(),
-        word.capitalize(),
-        word.upper() if len(word) > 1 else word.upper()
-    ]))
+        word.capitalize()
+    ])
 
 # -------------------------
-# Name variants
+# Name variants 
 # -------------------------
 def name_variants(full_name: str):
     """
-    Generates variations:
-      - individual toggles of each part (first, middle(s), last)
-      - compound combinations ONLY if they include the first name or the first initial
-      - includes initial+middle+last variant (e.g., MDinisBregieira)
-      - avoids combos that are only middle+last (to prevent explosion)
+    Generates name variants for passwords.
     """
-    parts_raw = [p for p in full_name.strip().split() if p]
-    parts = [sanitize_word(p) for p in parts_raw]
-    if not parts:
+    components = parse_name_components(full_name)
+    
+    if not components['all_parts']:
         return []
-
-    # toggles per part (list of lists)
-    toggles_per_part = [toggle_case(p) for p in parts]
-
-    # 1) Simple variants: all individual toggles (first, middle(s), last)
-    simple_names = list(itertools.chain.from_iterable(toggles_per_part))
-
-    # 2) Compound combinations — only combos that include part 0 (first)
-    combined = []
-    # Cartesian product of toggles (generates combos with all parts)
-    for combo in itertools.product(*toggles_per_part):
-        combined_entry = ''.join(combo)
-        combined.append(combined_entry)
-
-    # 3) Also include first+last only (skip middles) — but using toggles:
-    if len(parts) >= 2:
-        first_toggles = toggles_per_part[0]
-        last_toggles = toggles_per_part[-1]
-        for f in first_toggles:
-            for l in last_toggles:
-                combined.append(f + l)
-
-    # 4) Include initial(first) + middle(s) + last (if there are >=3 parts or even with 2 parts the initial+last is allowed)
-    first_initials = []
-    first_raw = parts[0]
-    if first_raw:
-        fi_lower = first_raw[0].lower()
-        fi_cap = first_raw[0].upper()
-        first_initials = [fi_lower, fi_cap]
-
-    if len(parts) >= 2:
-        # build combos where first replaced by its initial and the rest follow with their toggles
-        # toggles for middle(s) and last:
-        if len(parts) == 2:
-            # initial + last
-            for init in first_initials:
-                for l in toggles_per_part[-1]:
-                    combined.append(init + l)
+    
+    variants = []
+    
+    # 1. INDIVIDUAL PARTS (lowercase and Capitalized)
+    for part in components['all_parts']:
+        if '-' in part:
+            # For hyphenated parts, handle capitalization specially
+            hyphen_parts = part.split('-')
+            
+            # All lowercase
+            variants.append(part.lower())
+            
+            # Each part capitalized: Paul-Philipp
+            capitalized_hyphen = '-'.join([p.capitalize() for p in hyphen_parts])
+            variants.append(capitalized_hyphen)
+            
+            # First part capitalized, rest lowercase: Paul-philipp
+            if len(hyphen_parts) >= 2:
+                first_cap_rest_lower = hyphen_parts[0].capitalize() + '-' + '-'.join([p.lower() for p in hyphen_parts[1:]])
+                variants.append(first_cap_rest_lower)
         else:
-            # initial + middle(s) + last
-            middle_toggles_product = list(itertools.product(*toggles_per_part[1:]))  # includes middle(s) + last
-            for init in first_initials:
-                for mid_combo in middle_toggles_product:
-                    combined.append(init + ''.join(mid_combo))
-
-    # 5) Deduplicate and return: include simple_names and combined (but filter out unwanted middle+last-only combos)
-    # Filter rule: remove any combined that starts with a middle part (i.e., does not start with any toggle of the first or first initial)
-    allowed_prefixes = set(toggles_per_part[0])  # e.g. {'marcelo','Marcelo','marcelO'}
-    allowed_prefixes.update([parts[0][0].lower(), parts[0][0].upper()])  # add initials 'm' and 'M'
-
-    filtered_combined = []
-    for c in combined:
-        # check if c starts with any allowed prefix:
-        if any(c.startswith(pref) for pref in allowed_prefixes):
-            filtered_combined.append(c)
-        else:
-            # ignore combos that do not start with first or initial (this excludes middle+last)
-            continue
-
-    result = dedupe(simple_names + filtered_combined)
-
+            # Regular parts without hyphen
+            variants.append(part.lower())
+            variants.append(part.capitalize())
+    
+    # 2. FIRST + LAST combinations
+    if components['first_names'] and components['last_names']:
+        # components['first_names'] = ['Paul-Philipp', 'Paul', 'Philipp'] if hyphenated
+        # We want: Paul+Last, PaulPhilipp+Last, AND Paul-Philipp+Last
+        
+        # Get the hyphenated version if it exists
+        first_hyphenated = components['first_names'][0] if '-' in components['first_names'][0] else None
+        # Get the first part (Paul)
+        first_single = components['first_names'][1] if len(components['first_names']) > 1 else components['first_names'][0]
+        # Get combined without hyphen (PaulPhilipp)
+        first_combined = components['first_names'][0].replace('-', '') if first_hyphenated else first_single
+        
+        # Same for last name
+        last_hyphenated = components['last_names'][0] if '-' in components['last_names'][0] else None
+        last_single = components['last_names'][1] if len(components['last_names']) > 1 else components['last_names'][0]
+        last_combined = components['last_names'][0].replace('-', '') if last_hyphenated else last_single
+        
+        # Variant 1: First part + Last part (Paul + Bregieira)
+        variants.append(first_single.lower() + last_single.lower())
+        variants.append(first_single.capitalize() + last_single.capitalize())
+        variants.append(first_single.upper() + last_single.lower())
+        variants.append((first_single + last_single).capitalize())
+        
+        # Variant 2: Combined first + Last (PaulPhilipp + Bregieira) - if first was hyphenated
+        if first_combined != first_single:
+            variants.append(first_combined.lower() + last_single.lower())
+            variants.append(first_combined.capitalize() + last_single.capitalize())
+            variants.append(first_combined.upper() + last_single.lower())
+            variants.append((first_combined + last_single).capitalize())
+        
+        # Variant 3: Hyphenated first + Last (Paul-Philipp + Bregieira)
+        if first_hyphenated:
+            variants.append(first_hyphenated.lower() + last_single.lower())
+            variants.append(first_hyphenated.capitalize() + last_single.capitalize())
+            variants.append(first_hyphenated.upper() + last_single.lower())
+            variants.append((first_hyphenated + last_single).capitalize())
+        
+        # Variant 4: First + Combined last (if last was hyphenated)
+        if last_combined != last_single:
+            variants.append(first_single.lower() + last_combined.lower())
+            variants.append(first_single.capitalize() + last_combined.capitalize())
+            variants.append(first_single.upper() + last_combined.lower())
+            variants.append((first_single + last_combined).capitalize())
+        
+        # Variant 5: First + Hyphenated last (PRESERVE HYPHEN in last)
+        if last_hyphenated:
+            variants.append(first_single.lower() + last_hyphenated.lower())
+            variants.append(first_single.capitalize() + last_hyphenated.capitalize())
+            variants.append(first_single.upper() + last_hyphenated.lower())
+            variants.append((first_single + last_hyphenated).capitalize())
+    
+    # 3. FIRST INITIAL + LAST
+    if components['first_names'] and components['last_names']:
+        first_main = components['first_names'][1] if len(components['first_names']) > 1 else components['first_names'][0]
+        last_main = components['last_names'][1] if len(components['last_names']) > 1 else components['last_names'][0]
+        
+        if first_main:
+            initial_upper = first_main[0].upper()
+            initial_lower = first_main[0].lower()
+            last_clean = last_main.replace('-', '')
+            
+            variants.append(initial_upper + last_clean.capitalize())
+            variants.append(initial_lower + last_clean.lower())
+    
+    # 4. FULL NAME (first + middle + last)
+    if components['middle_names'] and components['last_names'] and components['first_names']:
+        first_single = components['first_names'][1] if len(components['first_names']) > 1 else components['first_names'][0]
+        first_combined = components['first_names'][0].replace('-', '') if '-' in components['first_names'][0] else first_single
+        middle_main = components['middle_names'][0]
+        last_main = components['last_names'][1] if len(components['last_names']) > 1 else components['last_names'][0]
+        
+        middle_clean = middle_main.replace('-', '')
+        last_clean = last_main.replace('-', '')
+        
+        # Version 1: First part only
+        full = first_single + middle_clean + last_clean
+        if len(full) <= 20:
+            variants.append(full.lower())
+            variants.append(first_single.capitalize() + middle_clean.capitalize() + last_clean.capitalize())
+            variants.append(first_single.upper() + middle_clean.lower() + last_clean.lower())
+            variants.append(full.capitalize())
+        
+        # Version 2: Combined first (if hyphenated)
+        if first_combined != first_single:
+            full_combined = first_combined + middle_clean + last_clean
+            if len(full_combined) <= 20:
+                variants.append(full_combined.lower())
+                variants.append(first_combined.capitalize() + middle_clean.capitalize() + last_clean.capitalize())
+                variants.append(first_combined.upper() + middle_clean.lower() + last_clean.lower())
+                variants.append(full_combined.capitalize())
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    result = []
+    for v in variants:
+        if v not in seen and v:
+            seen.add(v)
+            result.append(v)
+    
     return result
 
 # -------------------------
@@ -223,20 +369,17 @@ def special_chars_variants(word):
 # Common numbers
 # -------------------------
 def append_common_numbers(word):
-    # -------------------------------------------------------------------------
-    # ADD RANDOM NUMBERS                                           
     COMMON_NUMBERS = ["1", "123", "1234", "69", "7", "17", "123456"]
-    # -------------------------------------------------------------------------
-
     return [word + n for n in COMMON_NUMBERS]
 
 # ---------------------------------------------------------
-# RELATIONS + CHILDREN (unified structure)
+# RELATIONS + CHILDREN
 # ---------------------------------------------------------
 
 def process_person_for_combinations(person, target_last, target_name_variants, target_dates):
-    """Process relations or children: remove duplicate nickname, generate variants,
-       and return processed structure + own wordlist."""
+    """
+    Process relations or children.
+    """
     
     all_words = []
 
@@ -245,19 +388,22 @@ def process_person_for_combinations(person, target_last, target_name_variants, t
     if not raw_name:
         return None, []
 
-    parts_raw = [p for p in raw_name.strip().split() if p]
-    parts = [sanitize_word(p) for p in parts_raw]
-
-    person_last = parts[-1].lower() if parts else ""
-
-    # remove nickname if equal to target's last name
-    if person_last == target_last:
-        parts = parts[:-1]
-
-    if not parts:
+    components = parse_name_components(raw_name)
+    
+    if not components['all_parts']:
         return None, []
 
-    clean_name = " ".join(parts)
+    person_last_variants = components['last_names']
+    person_last_main = person_last_variants[0].lower() if person_last_variants else ""
+    
+    if person_last_main == target_last.lower():
+        filtered_parts = components['first_names'] + components['middle_names']
+        if not filtered_parts:
+            return None, []
+        clean_name = " ".join(filtered_parts)
+    else:
+        clean_name = " ".join(components['all_parts'])
+    
     name_vars = name_variants(clean_name)
 
     # --- nickname ---
@@ -267,21 +413,21 @@ def process_person_for_combinations(person, target_last, target_name_variants, t
     # --- dates ---
     person_dates = date_variants(person.get("birth")) if person.get("birth") else []
 
-    # --- isolated variants ---
     all_words += name_vars
-    for n in name_vars:
-        for dt in person_dates + target_dates:
+    
+    for n in name_vars[:5]:
+        for dt in (person_dates + target_dates)[:3]:
             all_words.append(n + dt)
 
     all_words += nickname_vars
-    for nn in nickname_vars:
-        for dt in person_dates + target_dates:
+    for nn in nickname_vars[:3]:
+        for dt in (person_dates + target_dates)[:3]:
             all_words.append(nn + dt)
 
     processed = {
-        "name_vars": name_vars,
-        "nickname_vars": nickname_vars,
-        "dates": person_dates
+        "name_vars": name_vars[:10],
+        "nickname_vars": nickname_vars[:5],
+        "dates": person_dates[:5]
     }
 
     return processed, all_words
@@ -291,11 +437,7 @@ def process_person_for_combinations(person, target_last, target_name_variants, t
 # -------------------------
 def process_pet_for_combinations(pet, target_name_variants, target_dates):
     """
-    Generate variants for pets:
-      - Name of the pet
-      - Nickname of the pet
-      - Combos target <-> pet
-      - Combos between pets (without dates)
+    Generate variants for pets.
     """
     all_words = []
 
@@ -303,13 +445,12 @@ def process_pet_for_combinations(pet, target_name_variants, target_dates):
     if not raw_name:
         return None, []
 
-    parts_raw = [p for p in raw_name.strip().split() if p]
-    parts = [sanitize_word(p) for p in parts_raw]
-
-    if not parts:
+    components = parse_name_components(raw_name)
+    
+    if not components['all_parts']:
         return None, []
 
-    clean_name = " ".join(parts)
+    clean_name = " ".join(components['all_parts'])
     name_vars = name_variants(clean_name)
 
     nickname = pet.get("nickname")
@@ -317,34 +458,21 @@ def process_pet_for_combinations(pet, target_name_variants, target_dates):
 
     pet_dates = date_variants(pet.get("birth")) if pet.get("birth") else []
 
-    # --- Isolated words of the pet ---
-    all_words += name_vars
-    all_words += nickname_vars
+    all_words += name_vars[:5]
+    all_words += nickname_vars[:3]
 
-    # --- Combos target <-> pet ---
-    for tn in target_name_variants:
-        for nv in name_vars:
-            # target+pet
+    for tn in target_name_variants[:3]:
+        for nv in name_vars[:2]:
             all_words.append(tn + nv)
             all_words.append(nv + tn)
-            # with dates: only one date per combination
-            for dt in target_dates + pet_dates:
-                all_words.append(tn + nv + dt)
-                all_words.append(nv + tn + dt)
-
-        for nn in nickname_vars:
-            # target+nickname
-            all_words.append(tn + nn)
-            all_words.append(nn + tn)
-            # with dates
-            for dt in target_dates + pet_dates:
-                all_words.append(tn + nn + dt)
-                all_words.append(nn + tn + dt)
+            
+            if target_dates:
+                all_words.append(tn + nv + target_dates[0])
 
     processed = {
-        "name_vars": name_vars,
-        "nickname_vars": nickname_vars,
-        "dates": pet_dates
+        "name_vars": name_vars[:5],
+        "nickname_vars": nickname_vars[:3],
+        "dates": pet_dates[:3]
     }
 
     return processed, all_words
@@ -354,14 +482,18 @@ def process_pet_for_combinations(pet, target_name_variants, target_dates):
 # -------------------------
 def combine_pets(processed_pets):
     """
-    Combine names/nicknames between pets.
-    NEVER use dates or create passwords with only dates.
+    Combine names between pets.
     """
+    if len(processed_pets) < 2:
+        return []
+    
     pet_words = []
-    for p1, p2 in itertools.permutations(processed_pets, 2):
-        for n1 in p1["name_vars"] + p1["nickname_vars"]:
-            for n2 in p2["name_vars"] + p2["nickname_vars"]:
-                pet_words.append(n1 + n2)
+    for p1, p2 in itertools.islice(itertools.permutations(processed_pets, 2), 4):
+        n1 = p1["name_vars"][0] if p1["name_vars"] else None
+        n2 = p2["name_vars"][0] if p2["name_vars"] else None
+        if n1 and n2:
+            pet_words.append(n1 + n2)
+    
     return pet_words
 
 
@@ -378,8 +510,7 @@ def _collect_important_words(profile, normalized_name_variants):
     for kw in profile.keywords:
         if kw:
             words += toggle_case(sanitize_word(normalize_string(kw)))
-    # include normalized name variants as important words base
-    words = dedupe(words + normalized_name_variants)
+    words = dedupe(words)
     return words
 
 
@@ -402,8 +533,8 @@ def _process_people(list_of_people, target_last, target_name_variants, date_list
         processed.append(pproc)
         words += pwords
         for dt in pproc.get("dates", []):
-            date_list.append(dt)
-        # progress print per person
+            if dt not in date_list:
+                date_list.append(dt)
         print(f"[+] Processed person: {person.get('name','(unnamed)')} — added {len(pwords)} words")
     return processed, words
 
@@ -418,34 +549,31 @@ def _process_pets(pets, target_name_variants, date_list):
         processed.append(pproc)
         words += pwords
         for dt in pproc.get("dates", []):
-            date_list.append(dt)
-        # progress print per pet
+            if dt not in date_list:
+                date_list.append(dt)
         print(f"[+] Processed pet: {pet.get('name','(unnamed)')} — added {len(pwords)} words")
     return processed, words
 
 
 def _combine_entity_date_combos(all_entities, date_list):
     combos = []
-    for entity in all_entities:
-        for dtv in date_list:
+    for entity in all_entities[:15]:
+        for dtv in date_list[:5]:
             combos.append(entity + dtv)
             combos.append(dtv + entity)
     return combos
 
 
 def _apply_final_transforms(words, profile):
-    # apply common numbers
     for w in list(words):
         words += append_common_numbers(w)
     print(f"[+] After appending common numbers: {len(words)} items")
 
-    # special chars
     final_words = []
     for w in words:
         final_words += special_chars_variants(w)
     print(f"[+] After applying special characters variants: {len(final_words)} items")
 
-    # leet
     if getattr(profile, "leet_enabled", False):
         leet_words = []
         for w in final_words:
@@ -453,9 +581,9 @@ def _apply_final_transforms(words, profile):
         final_words += leet_words
         print(f"[+] After applying leet transformations: {len(final_words)} items")
 
-    # dedupe and filter
     final_words = dedupe(final_words)
     print(f"[+] After deduplication: {len(final_words)} unique items")
+    
     filtered = []
     for w in final_words:
         if len(w) < MIN_WORDLIST_LENGTH:
@@ -473,87 +601,171 @@ def _apply_final_transforms(words, profile):
 
 def generate_wordlist(profile):
     print("[+] Starting wordlist generation...")
-    # target name variants
+    
     target_name_variants = _collect_target_variants(profile)
     print(f"[+] Target name variants: {len(target_name_variants)}")
 
-    # important words (including name variants)
-    important_words = _collect_important_words(profile, target_name_variants)
-    print(f"[+] Important words base: {len(important_words)}")
+    important_words = _collect_important_words(profile, [])
+    print(f"[+] Important words (keywords): {len(important_words)}")
 
-    # dates
     date_list = _collect_dates(profile)
     print(f"[+] Date variants collected: {len(date_list)}")
+    date_list = date_list[:10]
 
-    # keep a mutable date_list for downstream processors (they may append)
-    date_list = list(date_list)
+    target_components = parse_name_components(profile.name) if profile.name else {'last_names': [], 'first_names': []}
+    target_last = target_components['last_names'][0] if target_components['last_names'] else ""
+    target_first = target_components['first_names'][0] if target_components['first_names'] else ""
 
-    # prepare target last name for person processing
-    target_last = sanitize_word(profile.name.strip().split()[-1]).lower() if profile.name else ""
-
-    # relations
-    processed_relations, relation_words = _process_people(profile.relationships, target_last, target_name_variants, date_list)
+    processed_relations, relation_words = _process_people(
+        profile.relationships, 
+        target_last, 
+        target_name_variants[:5],
+        date_list
+    )
     print(f"[+] Relations processed: {len(processed_relations)} — relation words {len(relation_words)}")
 
-    # children
-    processed_children, children_words = _process_people(profile.children, target_last, target_name_variants, date_list)
+    processed_children, children_words = _process_people(
+        profile.children, 
+        target_last, 
+        target_name_variants[:5], 
+        date_list
+    )
     print(f"[+] Children processed: {len(processed_children)} — children words {len(children_words)}")
-    # combos between children (without dates)
-    for c1, c2 in itertools.permutations(processed_children, 2):
-        for v1 in c1.get("name_vars", []):
-            for v2 in c2.get("name_vars", []):
-                children_words.append(v1 + v2)
+    
+    child_combo_count = 0
+    for c1, c2 in itertools.islice(itertools.permutations(processed_children, 2), 6):
+        v1 = c1.get("name_vars", [])[0] if c1.get("name_vars") else None
+        v2 = c2.get("name_vars", [])[0] if c2.get("name_vars") else None
+        if v1 and v2:
+            children_words.append(v1 + v2)
+            child_combo_count += 1
 
-    # pets
-    processed_pets, pet_words = _process_pets(profile.pets, target_name_variants, date_list)
+    processed_pets, pet_words = _process_pets(
+        profile.pets, 
+        target_name_variants[:5], 
+        date_list
+    )
     print(f"[+] Pets processed: {len(processed_pets)} — pet words {len(pet_words)}")
-    pet_words += combine_pets(processed_pets)
+    pet_combo_words = combine_pets(processed_pets)
+    pet_words += pet_combo_words
 
-    # include initial target words
     words = []
     words += target_name_variants
     words += important_words
     words += relation_words
     words += children_words
     words += pet_words
-    print(f"[+] Accumulated words before combos/transforms: {len(words)}")
+    print(f"[+] Accumulated base words: {len(words)}")
 
-    # combos: target <-> important words
-    for w in important_words:
-        for tn in target_name_variants:
+    combo_count = 0
+    for w in important_words[:3]:
+        for tn in target_name_variants[:3]:
             words.append(tn + w)
             words.append(w + tn)
+            combo_count += 2
 
-    # combos: target <-> relations
-    for rel in processed_relations:
-        for tn in target_name_variants:
-            for rv in rel.get("name_vars", []) + rel.get("nickname_vars", []):
+    rel_combo_count = 0
+    for rel in processed_relations[:2]:
+        for tn in target_name_variants[:2]:
+            for rv in (rel.get("name_vars", []) + rel.get("nickname_vars", []))[:2]:
                 words.append(tn + rv)
                 words.append(rv + tn)
+                rel_combo_count += 2
 
-    # entity <-> date combos
-    all_entities = []
-    all_entities += target_name_variants
-    for rel in processed_relations:
-        all_entities += rel.get("name_vars", []) + rel.get("nickname_vars", [])
-    for child in processed_children:
-        all_entities += child.get("name_vars", []) + child.get("nickname_vars", [])
-    for pet in processed_pets:
-        all_entities += pet.get("name_vars", []) + pet.get("nickname_vars", [])
-    all_entities += important_words
+    # First name + date + last name combinations
+    if target_first and target_last and date_list:
+        # Collect ALL first name variants (hyphenated + individual parts)
+        first_variants = []
+        if target_components['first_names']:
+            for fname in target_components['first_names']:
+                if '-' in fname:
+                    # Add hyphenated versions
+                    hyphen_parts = fname.split('-')
+                    first_variants.append(fname.lower())
+                    first_variants.append('-'.join([p.capitalize() for p in hyphen_parts]))
+                    first_variants.append(hyphen_parts[0].capitalize() + '-' + hyphen_parts[1].lower())
+                    first_variants.append(fname.upper())
+                else:
+                    # Add individual parts
+                    first_variants.append(fname.lower())
+                    first_variants.append(fname.capitalize())
+                    first_variants.append(fname.upper())
+        
+        # Collect ALL last name variants (hyphenated + individual parts)
+        last_variants = []
+        if target_components['last_names']:
+            for lname in target_components['last_names']:
+                if '-' in lname:
+                    # Add hyphenated versions
+                    hyphen_parts = lname.split('-')
+                    last_variants.append(lname.lower())
+                    last_variants.append('-'.join([p.capitalize() for p in hyphen_parts]))
+                    last_variants.append(hyphen_parts[0].capitalize() + '-' + hyphen_parts[1].lower())
+                    
+                    # Also add non-hyphenated combined version
+                    combined = lname.replace('-', '')
+                    last_variants.append(combined.lower())
+                    last_variants.append(combined.capitalize())
+                else:
+                    # Add individual parts
+                    last_variants.append(lname.lower())
+                    last_variants.append(lname.capitalize())
+        
+        # Remove duplicates
+        first_variants = list(dict.fromkeys(first_variants))
+        last_variants = list(dict.fromkeys(last_variants))
+        
+        # Generate combinations
+        for fv in first_variants:
+            for dt in date_list[:5]:
+                for lv in last_variants:
+                    words.append(fv + dt + lv)
+        
+        # Simple combinations with year only (very common pattern)
+        if profile.birth:
+            year_full = str(profile.birth.year)
+            year_short = year_full[-2:]
+            
+            # First name + year
+            for fv in first_variants:
+                words.append(fv + year_full)
+                words.append(fv + year_short)
+            
+            # Last name + year
+            for lv in last_variants:
+                words.append(lv + year_full)
+                words.append(lv + year_short)
+            
+            # First + Last + year (without date in middle)
+            for fv in first_variants[:5]:  # Limit to avoid explosion
+                for lv in last_variants[:5]:
+                    words.append(fv + lv + year_full)
+                    words.append(fv + lv + year_short)
 
-    words += _combine_entity_date_combos(all_entities, date_list)
+    limited_entities = target_name_variants[:5] + important_words[:3]
+    for rel in processed_relations[:2]:
+        limited_entities += rel.get("name_vars", [])[:2]
+    for child in processed_children[:2]:
+        limited_entities += child.get("name_vars", [])[:2]
+    
+    limited_entities = dedupe(limited_entities)[:15]
+    date_combos = _combine_entity_date_combos(limited_entities, date_list[:5])
+    words += date_combos
     print(f"[+] Added date combos: total words now {len(words)}")
 
-    # apply transformations and filtering
+    words = dedupe(words)
+    print(f"[+] After deduplication before transforms: {len(words)}")
+
     filtered = _apply_final_transforms(words, profile)
     print(f"[+] Final filtered wordlist size: {len(filtered)}")
 
     return filtered, len(filtered)
 
+# -------------------------
+# PIN GENERATION
+# -------------------------
 
 def _extract_pins_from_date(d):
-    """Extract PIN variants from a date object."""
     if not d:
         return []
     
@@ -566,7 +778,6 @@ def _extract_pins_from_date(d):
     
     variants = []
     
-    # Priority 1: Day + Month (European format) - both padded and single digit
     variants.append(day_padded + month_padded)
     variants.append(day_single + month_single)
     variants.append(day_padded + month_padded + year_short)
@@ -574,7 +785,6 @@ def _extract_pins_from_date(d):
     variants.append(day_padded + month_padded + year)
     variants.append(day_single + month_single + year)
     
-    # Priority 2: Month + Day (American format) - both padded and single digit
     variants.append(month_padded + day_padded)
     variants.append(month_single + day_single)
     variants.append(month_padded + day_padded + year_short)
@@ -582,7 +792,6 @@ def _extract_pins_from_date(d):
     variants.append(month_padded + day_padded + year)
     variants.append(month_single + day_single + year)
     
-    # Priority 3: Combinations with year - both formats
     variants.append(day_padded + year_short)
     variants.append(day_single + year_short)
     variants.append(month_padded + year_short)
@@ -592,11 +801,9 @@ def _extract_pins_from_date(d):
     variants.append(month_padded + year)
     variants.append(month_single + year)
     
-    # Priority 4: Year alone
     variants.append(year)
     variants.append(year_short)
     
-    # Returns only valid digits, preserving order and removing duplicates
     seen = set()
     result = []
     for v in variants:
@@ -607,36 +814,29 @@ def _extract_pins_from_date(d):
     return result
 
 def _collect_date_based_pins(profile, length):
-    """Collect all date-based PINs from profile, preserving priority order."""
     pins = []
     seen = set()
     
-    # Helper to add pins maintaining order and avoiding duplicates
     def add_pins(date_obj):
         for pin in _extract_pins_from_date(date_obj):
             if len(pin) == int(length) and pin not in seen:
                 pins.append(pin)
                 seen.add(pin)
     
-    # Priority 1: Target's birth date
     if profile.birth:
         add_pins(profile.birth)
     
-    # Priority 2: Important dates
     for d in profile.important_dates:
         add_pins(d)
     
-    # Priority 3: Relationships' birth dates
     for rel in profile.relationships:
         if rel.get("birth"):
             add_pins(rel["birth"])
     
-    # Priority 4: Children's birth dates
     for child in profile.children:
         if child.get("birth"):
             add_pins(child["birth"])
     
-    # Priority 5: Pets' birth dates
     for pet in profile.pets:
         if pet.get("birth"):
             add_pins(pet["birth"])
@@ -645,10 +845,8 @@ def _collect_date_based_pins(profile, length):
 
 
 def _add_t9_variants(s, length, t9_single, t9_multi):
-    """Add T9 variants from a string to the given sets."""
     if not s:
         return
-    from magicguess.utils import sanitize_word
     
     cleaned = sanitize_word(s)
     if not cleaned:
@@ -663,7 +861,6 @@ def _add_t9_variants(s, length, t9_single, t9_multi):
         t9_multi.add(multi)
 
 def _collect_t9_pins(profile, length):
-    """Collect T9-generated PINs from profile names and keywords."""
     t9_single = set()
     t9_multi = set()
     
@@ -691,20 +888,15 @@ def _collect_t9_pins(profile, length):
     return sorted(t9_single), sorted(t9_multi)
 
 def _extract_numeric_sequences(s, length):
-    """Extract all numeric sequences of specified length from a string."""
     if not s:
         return []
     
-    import re
-    # Find all sequences of digits
     numbers = re.findall(r'\d+', s)
     
     sequences = []
     for num in numbers:
-        # If exact length match
         if len(num) == int(length):
             sequences.append(num)
-        # If longer, extract all possible substrings of desired length
         elif len(num) > int(length):
             for i in range(len(num) - int(length) + 1):
                 sequences.append(num[i:i+int(length)])
@@ -712,26 +904,21 @@ def _extract_numeric_sequences(s, length):
     return sequences
 
 def _collect_numeric_pins(profile, length):
-    """Collect numeric sequences from emails, keywords, and usernames."""
     numeric_pins = []
     seen = set()
     
-    # Extract from emails (both full email and username part)
     for em in profile.emails:
         if em:
-            # Full email
             for pin in _extract_numeric_sequences(em, length):
                 if pin not in seen:
                     numeric_pins.append(pin)
                     seen.add(pin)
-            # Username part (before @)
             username = em.split("@")[0]
             for pin in _extract_numeric_sequences(username, length):
                 if pin not in seen:
                     numeric_pins.append(pin)
                     seen.add(pin)
     
-    # Extract from keywords
     for kw in profile.keywords:
         if kw:
             for pin in _extract_numeric_sequences(kw, length):
@@ -739,7 +926,6 @@ def _collect_numeric_pins(profile, length):
                     numeric_pins.append(pin)
                     seen.add(pin)
     
-    # Extract from name (usernames often contain birth year, etc.)
     if profile.name:
         for pin in _extract_numeric_sequences(profile.name, length):
             if pin not in seen:
@@ -749,30 +935,24 @@ def _collect_numeric_pins(profile, length):
     return numeric_pins
 
 def _known_patterns(length):
-    """Generate common/known PIN patterns."""
     n = int(length)
     patterns = []
     
-    # Increasing sequence
     if n <= 9:
         inc = ''.join(str(i) for i in range(1, n+1))
     else:
         inc = ''.join(str(i % 10) for i in range(1, n+1))
     patterns.append(inc)
     
-    # Decreasing sequence
     patterns.append(inc[::-1])
     
-    # Repeated digits
     for d in range(10):
         patterns.append(str(d) * n)
     
-    # Special patterns for 4-digit PINs
     if n == 4:
         patterns.insert(0, '2580')
         patterns.insert(1, '0852')
     
-    # Special patterns for 6-digit PINs
     if n == 6:
         patterns.extend(['123654', '456321', '456987', '789654', 
                         '147258', '852741', '369258', '258963'])
@@ -781,7 +961,6 @@ def _known_patterns(length):
 
 
 def _load_base_pin_file(base_file, length):
-    """Load or create base PIN file."""
     if base_file.exists():
         return _read_base_file(base_file)
     
@@ -798,7 +977,6 @@ def _load_base_pin_file(base_file, length):
 
 
 def _read_base_file(base_file):
-    """Read existing base PIN file with encoding detection."""
     try:
         raw = base_file.read_bytes()
         encoding = _detect_encoding(raw)
@@ -812,7 +990,6 @@ def _read_base_file(base_file):
 
 
 def _detect_encoding(raw):
-    """Detect file encoding from BOM or by trying common encodings."""
     if raw.startswith(b"\xef\xbb\xbf"):
         return "utf-8-sig"
     elif raw.startswith(b"\xff\xfe"):
@@ -830,7 +1007,6 @@ def _detect_encoding(raw):
 
 
 def _create_base_file(base_file, length):
-    """Create new base PIN file."""
     total = 10 ** int(length)
     WARN_LIMIT = 2_000_000
     
@@ -853,41 +1029,34 @@ def _create_base_file(base_file, length):
 
 
 def _build_final_pinlist(date_pins, numeric_pins, t9_single, t9_multi, base_list, length):
-    """Build final PIN list with priority ordering."""
     final = []
     seen = set()
     
-    # 1. Date-based PINs (highest priority)
     for p in date_pins:
         if p not in seen:
             final.append(p)
             seen.add(p)
     
-    # 2. Numeric sequences from emails/keywords
     for p in numeric_pins:
         if p not in seen:
             final.append(p)
             seen.add(p)
     
-    # 3. T9 single-press PINs
     for p in t9_single:
         if p not in seen:
             final.append(p)
             seen.add(p)
     
-    # 4. T9 multi-press PINs
     for p in t9_multi:
         if p not in seen:
             final.append(p)
             seen.add(p)
     
-    # 5. Known patterns
     for p in _known_patterns(length):
         if p not in seen:
             final.append(p)
             seen.add(p)
     
-    # 6. Base list entries
     for p in base_list:
         if p.isdigit() and len(p) == int(length) and p not in seen:
             final.append(p)
@@ -897,24 +1066,13 @@ def _build_final_pinlist(date_pins, numeric_pins, t9_single, t9_multi, base_list
 
 
 def generate_pinlist(profile, length=4):
-    """
-    Generate PIN list from profile information.
-    Returns the PIN list and its count.
-    """
-    # Collect date-based PINs
     date_pins = _collect_date_based_pins(profile, length)
-    
-    # Collect numeric sequences from emails/keywords
     numeric_pins = _collect_numeric_pins(profile, length)
-    
-    # Collect T9-generated PINs
     t9_single, t9_multi = _collect_t9_pins(profile, length)
     
-    # Load or create base PIN file
     base_file = Path(__file__).parent / f"PIN{length}_markov.txt"
     base_list = _load_base_pin_file(base_file, length)
     
-    # Build final list with priority
     final = _build_final_pinlist(date_pins, numeric_pins, t9_single, t9_multi, base_list, length)
     
     print(f"[+] Generated {len(date_pins)} date-based PINs; "
