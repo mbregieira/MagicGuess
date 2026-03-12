@@ -3,6 +3,8 @@
 A **profile-based wordlist and PINlist generator** designed for **digital forensics** and **penetration testing**.  
 The tool focuses on **high-value, realistic passwords and PINs** commonly encountered in real-world engagements.
 
+MagicGuess is designed to prioritize realistic human password patterns instead of generating massive low-quality lists. 
+
 ---
 
 ## Key Features
@@ -19,9 +21,11 @@ The wordlist is generated from a structured target profile, including:
 
 Each category can generate passwords **independently** or in **controlled combinations**.
 
+This allows MagicGuess to simulate real user password creation behavior.
+
 ---
 
-### Important Dates (Centralized Logic)
+### Important Dates
 
 **Important dates** are automatically applied to:
 - Target
@@ -36,18 +40,25 @@ Each category can generate passwords **independently** or in **controlled combin
 - Relevant events (anniversaries, etc.)
 
 **Date formats generated:**
-- `DDMMYYYY` / `MMDDYYYY` (full year)
-- `DDMMYY` / `MMDDYY` (short year)
-- `DDMM` / `MMDD` (no year)
-- `YYYY` / `YY` (year only)
--  `DMYY` & `DMYYYY`
+ - DDMMYYYY
+ - MMDDYYYY
+ - DDMMYY
+ - MMDDYY
+ - DDMM
+ - MMDD
+ - DMYY
+ - DMYYYY
+ - YYYY
+ - YY
+
+**Both padded and non-padded formats are generated.**
 
 **Priority ordering:**
 - European format (`DDMM`) prioritized first
 - American format (`MMDD`) second
-- Other combinations follow
-
-These are reused across the generator to avoid duplication and explosion.
+- Short-year formats
+- Full-year formats
+- Year-only variants
 
 ---
 
