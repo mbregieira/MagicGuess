@@ -121,7 +121,11 @@ def main_cli():
 
     if mg.generate_wordlist:
         mg.leet_enabled = ask_yes_no("Enable leet transformations?")
+        mg.special_enabled = ask_yes_no("Add special character variants?")
+        mg.common_numbers_enabled = ask_yes_no("Append common numbers?")
+
         mg.wordlist, mg.wordlist_count = generate_wordlist(mg)
+        
         filename = input("[+] Save wordlist to filename (default: AwesomeWordlist.txt): ").strip()
         if not filename:
             filename = "AwesomeWordlist.txt"

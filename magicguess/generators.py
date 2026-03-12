@@ -579,14 +579,30 @@ def _combine_entity_date_combos(all_entities, date_list):
 
 
 def _apply_final_transforms(words, profile):
-    for w in list(words):
-        words += append_common_numbers(w)
-    print(f"[+] After appending common numbers: {len(words)} items")
+    
+    # -------------------------
+    # COMMON NUMBERS
+    # -------------------------
+    if getattr(profile, "common_numbers_enabled", True):
+        for w in list(words):
+            words += append_common_numbers(w)
+        print(f"[+] After appending common numbers: {len(words)} items")
 
+    # -------------------------
+    # SPECIAL CHARACTERS
+    # -------------------------
     final_words = []
-    for w in words:
-        final_words += special_chars_variants(w)
-    print(f"[+] After applying special characters variants: {len(final_words)} items")
+
+    if getattr(profile, "special_enabled", True):
+        for w in words:
+            final_words += special_chars_variants(w)
+        print(f"[+] After applying special characters variants: {len(final_words)} items")
+    else:
+        final_words = list(words)
+
+    # -------------------------
+    # LEET
+    # -------------------------
 
     if getattr(profile, "leet_enabled", False):
         leet_words = []
@@ -594,6 +610,10 @@ def _apply_final_transforms(words, profile):
             leet_words += apply_leet(w)
         final_words += leet_words
         print(f"[+] After applying leet transformations: {len(final_words)} items")
+
+    # -------------------------
+    # DEDUPE
+    # -------------------------
 
     final_words = dedupe(final_words)
     print(f"[+] After deduplication: {len(final_words)} unique items")
