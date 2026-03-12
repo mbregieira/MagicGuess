@@ -7,7 +7,7 @@ import itertools
 import re
 
 SPECIAL_CHARS = ['!', '@', '#', '$', '%', '&', '*', '"']
-MIN_WORDLIST_LENGTH = 6
+MIN_WORDLIST_LENGTH = 5
 
 # -------------------------
 # LEET MAPPING
@@ -333,22 +333,36 @@ def date_variants(d):
     if not d:
         return []
 
-    days = [str(d.day), f"{d.day:02d}"]
-    months = [str(d.month), f"{d.month:02d}"]
+    day = str(d.day)
+    day_padded = f"{d.day:02d}"
+
+    month = str(d.month)
+    month_padded = f"{d.month:02d}"
+
     year_full = str(d.year)
     year_short = year_full[-2:]
 
-    variants = set()
-    for day in days:
-        for month in months:
-            for year in [year_full, year_short]:
-                variants.add(f"{day}{month}{year}")
-                variants.add(f"{month}{day}{year}")  # inverted
+    variants = []
 
-    variants.add(year_full)
-    variants.add(year_short)
+    # Most common formats first
+    variants.append(day_padded + month_padded + year_full) 
+    variants.append(day + month + year_full)                 
 
-    return list(dedupe(variants))
+    variants.append(day_padded + month_padded + year_short)  
+    variants.append(day + month + year_short)                
+
+    # Month-first (US)
+    variants.append(month_padded + day_padded + year_full)   
+    variants.append(month + day + year_full)
+
+    variants.append(month_padded + day_padded + year_short)
+    variants.append(month + day + year_short)
+
+    # Only year
+    variants.append(year_full)
+    variants.append(year_short)
+
+    return dedupe(variants)
 
 # -------------------------
 # Special characters
@@ -558,7 +572,7 @@ def _process_pets(pets, target_name_variants, date_list):
 def _combine_entity_date_combos(all_entities, date_list):
     combos = []
     for entity in all_entities[:15]:
-        for dtv in date_list[:5]:
+        for dtv in date_list:
             combos.append(entity + dtv)
             combos.append(dtv + entity)
     return combos
@@ -610,7 +624,6 @@ def generate_wordlist(profile):
 
     date_list = _collect_dates(profile)
     print(f"[+] Date variants collected: {len(date_list)}")
-    date_list = date_list[:10]
 
     target_components = parse_name_components(profile.name) if profile.name else {'last_names': [], 'first_names': []}
     target_last = target_components['last_names'][0] if target_components['last_names'] else ""
@@ -717,30 +730,57 @@ def generate_wordlist(profile):
         
         # Generate combinations
         for fv in first_variants:
-            for dt in date_list[:5]:
+            for dt in date_list:
                 for lv in last_variants:
                     words.append(fv + dt + lv)
         
-        # Simple combinations with year only (very common pattern)
+        # Combinations with dates
         if profile.birth:
             year_full = str(profile.birth.year)
             year_short = year_full[-2:]
-            
+
+            day_variants = [
+                str(profile.birth.day),
+                f"{profile.birth.day:02d}"
+            ]
+
+            month_variants = [
+                str(profile.birth.month),
+                f"{profile.birth.month:02d}"
+            ]
+
             # First name + year
             for fv in first_variants:
                 words.append(fv + year_full)
                 words.append(fv + year_short)
-            
+
             # Last name + year
             for lv in last_variants:
                 words.append(lv + year_full)
                 words.append(lv + year_short)
-            
-            # First + Last + year (without date in middle)
-            for fv in first_variants[:5]:  # Limit to avoid explosion
+
+            # First + Last + year
+            for fv in first_variants[:5]:
                 for lv in last_variants[:5]:
                     words.append(fv + lv + year_full)
                     words.append(fv + lv + year_short)
+
+            # First name + date variants
+            for fv in first_variants:
+                for d in day_variants:
+                    words.append(fv + d)              # Marcelo7 / Marcelo07
+
+                    words.append(fv + d + year_short) # Marcelo793 / Marcelo0793
+
+                    for m in month_variants:
+                        words.append(fv + d + m)           # Marcelo710 / Marcelo0710
+                        words.append(fv + d + m + year_short) # Marcelo71093
+                        words.append(fv + d + m + year_full)  # Marcelo07101993
+
+                for m in month_variants:
+                    words.append(fv + m)                 # Marcelo10
+                    words.append(fv + m + year_short)    # Marcelo1093
+                    words.append(fv + m + year_full)     # Marcelo101993
 
     limited_entities = target_name_variants[:5] + important_words[:3]
     for rel in processed_relations[:2]:
@@ -749,7 +789,7 @@ def generate_wordlist(profile):
         limited_entities += child.get("name_vars", [])[:2]
     
     limited_entities = dedupe(limited_entities)[:15]
-    date_combos = _combine_entity_date_combos(limited_entities, date_list[:5])
+    date_combos = _combine_entity_date_combos(limited_entities, date_list)
     words += date_combos
     print(f"[+] Added date combos: total words now {len(words)}")
 
