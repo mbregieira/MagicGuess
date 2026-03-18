@@ -41,8 +41,10 @@ This allows MagicGuess to simulate real user password creation behavior.
 
 **Date formats generated:**
  - DDMMYYYY
+ - YYYYMMDD
  - MMDDYYYY
  - DDMMYY
+ - YYMMDD
  - MMDDYY
  - DDMM
  - MMDD
