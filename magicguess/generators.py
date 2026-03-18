@@ -333,33 +333,53 @@ def date_variants(d):
     if not d:
         return []
 
-    day = str(d.day)
     day_padded = f"{d.day:02d}"
-
-    month = str(d.month)
     month_padded = f"{d.month:02d}"
-
-    year_full = str(d.year)
-    year_short = year_full[-2:]
-
+    day_single = str(d.day)
+    month_single = str(d.month)
+    year = str(d.year)
+    year_short = year[-2:]
+    
     variants = []
-
-    # Most common formats first
-    variants.append(day_padded + month_padded + year_full) 
-    variants.append(day + month + year_full)                 
-
-    variants.append(day_padded + month_padded + year_short)  
-    variants.append(day + month + year_short)                
-
-    # Month-first (US)
-    variants.append(month_padded + day_padded + year_full)   
-    variants.append(month + day + year_full)
-
+    
+    variants.append(day_padded + month_padded)
+    variants.append(day_padded + month_single)
+    variants.append(day_single + month_padded)
+    variants.append(day_single + month_single)
+    variants.append(day_padded + month_padded + year_short)
+    variants.append(day_padded + month_single + year_short)
+    variants.append(day_single + month_single + year_short)
+    variants.append(day_single + month_padded + year_short)
+    variants.append(day_padded + month_padded + year)
+    variants.append(day_padded + month_single + year)
+    variants.append(day_single + month_single + year)
+    variants.append(day_single + month_padded + year)
+    variants.append(year_short + month_padded + day_padded)
+    variants.append(year_short + month_single + day_padded)
+    variants.append(year_short + month_single + day_single)
+    variants.append(year_short + month_padded + day_single)
+    variants.append(year + month_padded + day_padded)
+    variants.append(year + month_single + day_padded)
+    variants.append(year + month_single + day_single)
+    variants.append(year + month_padded + day_single)
+    
+    variants.append(month_padded + day_padded)
+    variants.append(month_single + day_single)
     variants.append(month_padded + day_padded + year_short)
-    variants.append(month + day + year_short)
-
-    # Only year
-    variants.append(year_full)
+    variants.append(month_single + day_single + year_short)
+    variants.append(month_padded + day_padded + year)
+    variants.append(month_single + day_single + year)
+    
+    variants.append(day_padded + year_short)
+    variants.append(day_single + year_short)
+    variants.append(month_padded + year_short)
+    variants.append(month_single + year_short)
+    variants.append(day_padded + year)
+    variants.append(day_single + year)
+    variants.append(month_padded + year)
+    variants.append(month_single + year)
+    
+    variants.append(year)
     variants.append(year_short)
 
     return dedupe(variants)
@@ -839,11 +859,25 @@ def _extract_pins_from_date(d):
     variants = []
     
     variants.append(day_padded + month_padded)
+    variants.append(day_padded + month_single)
+    variants.append(day_single + month_padded)
     variants.append(day_single + month_single)
     variants.append(day_padded + month_padded + year_short)
+    variants.append(day_padded + month_single + year_short)
     variants.append(day_single + month_single + year_short)
+    variants.append(day_single + month_padded + year_short)
     variants.append(day_padded + month_padded + year)
+    variants.append(day_padded + month_single + year)
     variants.append(day_single + month_single + year)
+    variants.append(day_single + month_padded + year)
+    variants.append(year_short + month_padded + day_padded)
+    variants.append(year_short + month_single + day_padded)
+    variants.append(year_short + month_single + day_single)
+    variants.append(year_short + month_padded + day_single)
+    variants.append(year + month_padded + day_padded)
+    variants.append(year + month_single + day_padded)
+    variants.append(year + month_single + day_single)
+    variants.append(year + month_padded + day_single)
     
     variants.append(month_padded + day_padded)
     variants.append(month_single + day_single)
