@@ -1,7 +1,0 @@
-*markov.txt
-AwesomePINlist.txt
-AwesomeWordlist.txt
-**/__pycache__/
-*.pyc
-*.pyo
-.vscode/settings.json
